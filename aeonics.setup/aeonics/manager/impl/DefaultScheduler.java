@@ -1,0 +1,146 @@
+package aeonics.manager.impl;
+
+import java.io.Closeable;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Iterator;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
+
+import aeonics.entity.Origin;
+import aeonics.entity.Registry;
+import aeonics.manager.Executor;
+import aeonics.manager.Logger;
+import aeonics.manager.Manager;
+import aeonics.manager.Scheduler;
+import aeonics.template.Template;
+import aeonics.util.StringUtils;
+import aeonics.util.Tuple;
+
+public class DefaultScheduler extends Manager<Scheduler>
+{
+	private static class Implementation extends Scheduler implements Closeable
+	{
+		private final Object locker = new Object();
+		private volatile ZonedDateTime next = null;
+		private Queue<Tuple<ZonedDateTime, Consumer<ZonedDateTime>>> once = new ConcurrentLinkedQueue<Tuple<ZonedDateTime, Consumer<ZonedDateTime>>>();
+		
+		public void at(Consumer<ZonedDateTime> task, ZonedDateTime time)
+		{
+			ZonedDateTime now = ZonedDateTime.now();
+			
+			if( time.isBefore(now) )
+			{
+				Manager.of(Executor.class).priority(() -> { task.accept(now); });
+				return;
+			}
+			else
+				once.add(new Tuple<ZonedDateTime, Consumer<ZonedDateTime>>(time, task));
+			
+			if( next == null || time.isBefore(next) )
+				refresh();
+		}
+
+		public void refresh()
+		{
+			synchronized(locker)
+			{
+				locker.notify();
+			}
+		}
+		
+		public void close() { origin.stop(); Registry.of(Origin.class).remove(origin.id()); origin = null; }
+		
+		Origin.Background origin = new Origin.Background()
+		{
+			{
+				// initializer block
+				initialize(category(), "", null, true);
+			}
+			
+			public void run() 
+			{
+				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Scheduler Manager");
+				while(true)
+				{
+					ZonedDateTime now = ZonedDateTime.now();
+					ZonedDateTime next = null;
+					for( Cron.Type c : Registry.of(Cron.class) )
+					{
+						if( c == null ) continue;
+						
+						ZonedDateTime future = c.next(false);
+						if( future == null ) continue;
+						
+						if( future.isBefore(now) )
+						{
+							Manager.of(Executor.class).normal(() -> { c.accept(now); });
+							future = c.next(true);
+						}
+						
+						if( next == null || (future != null && future.isBefore(next)) )
+							next = future;
+					}
+					
+					Iterator<Tuple<ZonedDateTime, Consumer<ZonedDateTime>>> i = once.iterator();
+					while( i.hasNext() )
+					{
+						Tuple<ZonedDateTime, Consumer<ZonedDateTime>> t = i.next();
+						if( t.a.isBefore(now) )
+						{
+							Manager.of(Executor.class).normal(() -> { t.b.accept(now); });
+							i.remove();
+							continue;
+						}
+						
+						if( next == null || t.a.isBefore(next) )
+							next = t.a;
+					}
+					
+					// this should not happen but we never know
+					if( next != null && next.isBefore(now) )
+					{
+						Manager.of(Logger.class).finest(Scheduler.class, "Next task is past due. Looping now.");
+						continue;
+					}
+					
+					try
+					{
+						synchronized(locker)
+						{
+							if( next == null )
+							{
+								Manager.of(Logger.class).finest(Scheduler.class, "No future tasks to perform. Sleeping until further notice.");
+								locker.wait();
+							}
+							else
+							{
+								long ms = ChronoUnit.MILLIS.between(now, next);
+								if( ms <= 0 ) continue;
+								
+								Manager.of(Logger.class).finest(Scheduler.class, "Next task scheduled at {}. Sleeping for {}ms.", next, ms);
+								locker.wait(ms);
+							}
+						}
+					}
+					catch(InterruptedException e) { return; }
+				}
+			}
+		};
+	}
+	
+	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Scheduler.class), StringUtils.toLowerCase(Manager.class))
+	.creator(Implementation::new)
+	.summary("Task scheduler")
+	.description("This task scheduler is designed to optimize the processing power by sleeping until the next task has to run instead of waking up at regular interval. "
+		+ "This allows a finer granularity in task scheduling without requiring constant checks.")
+	.builder((data, instance) -> 
+	{
+		Registry.add(instance.origin);
+		instance.origin.start();
+	});
+	
+	public Template<? extends Scheduler> template() { return template; }
+	public Class<? extends Scheduler> entity() { return Implementation.class; }
+}
