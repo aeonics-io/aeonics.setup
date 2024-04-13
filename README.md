@@ -1,6 +1,6 @@
-## System.Setup
+## Plugin: "aeonics.setup"
 
-This **Nucleus Runtime** plugin provides a default implementation of system 
+This *Nucleus Runtime* plugin provides a default implementation of system 
 managers and initial lifecycle.
 
 ## Compile and package
@@ -8,7 +8,7 @@ managers and initial lifecycle.
 You can use your favourite tool (Maven, Gradle,...) but to be honest, we prefer
 the plain simple standard and out-of-the-box `javac`.
 
-The `ae.jar` file is the binary distribution of the **aeonics.system** core.
+The `ae.jar` file is the binary distribution of the *aeonics.system* core.
 
 ```shell
 javac -source 11 -target 11 -nowarn -XDignore.symbol.file \
