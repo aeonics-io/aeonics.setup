@@ -8,12 +8,13 @@ managers and initial lifecycle.
 You can use your favourite tool (Maven, Gradle,...) but to be honest, we prefer
 the plain simple standard and out-of-the-box `javac`.
 
-The `ae.jar` file is the binary distribution of the *aeonics.system* core.
+The binary distribution of the *aeonics.system* core `ae.jar` should be in the
+current directory.
 
 ```shell
 javac -source 11 -target 11 -nowarn -XDignore.symbol.file \
-      -cp ae.jar \
       -d aeonics.setup/bin \
+      --module-path . \
       --module-source-path .\
       --module aeonics.setup
 
