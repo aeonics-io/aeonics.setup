@@ -35,6 +35,7 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 			start(Phase.CONFIG);
 			start(Phase.RUN);
 			
+			System.gc();
 			Manager.of(Logger.class).info(Boot.class, "System boot-to-run in {}ms. Ready.", (System.currentTimeMillis() - Boot.BOOT_TIME));
 			
 			AtomicBoolean terminated = new AtomicBoolean(false);

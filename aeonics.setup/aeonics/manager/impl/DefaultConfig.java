@@ -72,8 +72,8 @@ public class DefaultConfig extends Manager<Config>
 			{
 				String key = type + ":" + name;
 				Tuple<Data, Tuple<Callback<Tuple<String, Data>>, Parameter>> v = store.get(key);
-				if( v == null ) store.put(key, v = new Tuple<>(null, new Tuple<>(null, new Parameter(name))));
-				if( !v.b.b.validate(value) ) throw new IllegalArgumentException("Invalid value for parameter " + type + ":" + name);
+				if( v == null ) store.put(key, v = new Tuple<>(null, new Tuple<>(null, new Parameter(name).optional(true))));
+				if( !v.b.b.validate(value) ) throw new IllegalArgumentException("Invalid value for parameter " + type + ": " + name);
 				Data old = v.a;
 				v.a = value;
 				
