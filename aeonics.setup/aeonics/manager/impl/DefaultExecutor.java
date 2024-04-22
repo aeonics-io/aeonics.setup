@@ -10,7 +10,6 @@ import aeonics.manager.Executor;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.template.Template;
-import aeonics.util.StringUtils;
 
 public class DefaultExecutor extends Manager<Executor>
 {
@@ -73,11 +72,13 @@ public class DefaultExecutor extends Manager<Executor>
 		public <T> Task<T> io(Supplier<T> task) { return normal(task); }
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Executor.class), StringUtils.toLowerCase(Manager.class))
-	.creator(Implementation::new)
-	.summary("Default runtime")
-	.description("Manages the execution of all the tasks in the system. This manager treats I/O operations as normal tasks.");
+	protected Class<? extends DefaultExecutor.Implementation> defaultEntity() { return DefaultExecutor.Implementation.class; }
+	protected Supplier<? extends DefaultExecutor.Implementation> defaultCreator() { return DefaultExecutor.Implementation::new; }
 	
-	public Template<? extends Executor> template() { return template; }
-	public Class<? extends Executor> entity() { return Implementation.class; }
+	public Template<? extends Executor> template()
+	{
+		return super.template()
+			.summary("Default runtime")
+			.description("Manages the execution of all the tasks in the system. This manager treats I/O operations as normal tasks.");
+	}
 }

@@ -41,7 +41,6 @@ import aeonics.template.Parameter;
 import aeonics.template.Template;
 import aeonics.util.Callback;
 import aeonics.util.Hardware;
-import aeonics.util.StringUtils;
 
 public class DefaultNetwork extends Manager<Network>
 {
@@ -104,8 +103,8 @@ public class DefaultNetwork extends Manager<Network>
 			}
 			catch(IOException e)
 			{
-				channel.close();
 				Manager.of(Logger.class).info(Network.class, e);
+				channel.close();
 				throw e;
 			}
 		}
@@ -346,18 +345,20 @@ public class DefaultNetwork extends Manager<Network>
 		});
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Network.class), StringUtils.toLowerCase(Manager.class))
-	.creator(Implementation::new)
-	.summary("Non-blocking network manager")
-	.description("This network manager will keep track of all listening and established connections in a non-blocking efficient manner and will defer"
-		+ "processing of reads and writes to the Execution manager. Connections can be secured with TLS.")
-	.config(new Parameter("timeout")
-		.summary("Default network idle timeout")
-		.description("This configuration parameter defines the priod of time in milliseconds after which an idle network connection is considered inactive ans should be forcibly closed.")
-		.defaultValue(Data.of(120000)));
+	protected Class<? extends DefaultNetwork.Implementation> defaultEntity() { return DefaultNetwork.Implementation.class; }
+	protected Supplier<? extends DefaultNetwork.Implementation> defaultCreator() { return DefaultNetwork.Implementation::new; }
 	
-	public Template<? extends Network> template() { return template; }
-	public Class<? extends Network> entity() { return Implementation.class; }
+	public Template<? extends Network> template()
+	{
+		return super.template()
+			.summary("Non-blocking network manager")
+			.description("This network manager will keep track of all listening and established connections in a non-blocking efficient manner and will defer"
+				+ "processing of reads and writes to the Execution manager. Connections can be secured with TLS.")
+			.config(Network.class, new Parameter("timeout")
+				.summary("Default network idle timeout")
+				.description("This configuration parameter defines the priod of time in milliseconds after which an idle network connection is considered inactive ans should be forcibly closed.")
+				.defaultValue(Data.of(120000)));
+	}
 	
 	// =========================================
 	//

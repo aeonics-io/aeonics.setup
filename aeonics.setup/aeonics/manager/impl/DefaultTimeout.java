@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.util.Iterator;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Supplier;
 
 import aeonics.manager.Executor;
 import aeonics.manager.Logger;
@@ -11,7 +12,6 @@ import aeonics.manager.Manager;
 import aeonics.manager.Timeout;
 import aeonics.manager.Executor.Task;
 import aeonics.template.Template;
-import aeonics.util.StringUtils;
 
 public class DefaultTimeout extends Manager<Timeout>
 {
@@ -97,12 +97,14 @@ public class DefaultTimeout extends Manager<Timeout>
 		});
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Timeout.class), StringUtils.toLowerCase(Manager.class))
-	.creator(Implementation::new)
-	.summary("Non-blocking timeout manager")
-	.description("This timeout manager will keep track of all trackers in a non-blocking efficient manner and will defer"
-		+ "processing of expired elements to the Execution manager.");
+	protected Class<? extends DefaultTimeout.Implementation> defaultEntity() { return DefaultTimeout.Implementation.class; }
+	protected Supplier<? extends DefaultTimeout.Implementation> defaultCreator() { return DefaultTimeout.Implementation::new; }
 	
-	public Template<? extends Timeout> template() { return template; }
-	public Class<? extends Timeout> entity() { return Implementation.class; }
+	public Template<? extends Timeout> template()
+	{
+		return super.template()
+			.summary("Non-blocking timeout manager")
+			.description("This timeout manager will keep track of all trackers in a non-blocking efficient manner and will defer"
+				+ "processing of expired elements to the Execution manager.");
+	}
 }

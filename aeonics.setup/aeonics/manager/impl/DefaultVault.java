@@ -3,13 +3,13 @@ package aeonics.manager.impl;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 import aeonics.data.Data;
 import aeonics.manager.Manager;
 import aeonics.manager.Security;
 import aeonics.manager.Vault;
 import aeonics.template.Template;
-import aeonics.util.StringUtils;
 
 public class DefaultVault extends Manager<Vault>
 {
@@ -64,11 +64,13 @@ public class DefaultVault extends Manager<Vault>
 		}
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Vault.class), StringUtils.toLowerCase(Manager.class))
-	.creator(Implementation::new)
-	.summary("Simple vault")
-	.description("This vault implementation stores data in memory and offers basic type token access protection.");
-			
-	public Template<? extends Vault> template() { return template; }
-	public Class<? extends Vault> entity() { return Implementation.class; }
+	protected Class<? extends DefaultVault.Implementation> defaultEntity() { return DefaultVault.Implementation.class; }
+	protected Supplier<? extends DefaultVault.Implementation> defaultCreator() { return DefaultVault.Implementation::new; }
+	
+	public Template<? extends Vault> template()
+	{
+		return super.template()
+			.summary("Simple vault")
+			.description("This vault implementation stores data in memory and offers basic type token access protection.");
+	}
 }

@@ -3,14 +3,15 @@ package aeonics.manager.impl;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Supplier;
 
 import aeonics.data.Data;
+import aeonics.manager.Config;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Monitor;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
-import aeonics.util.StringUtils;
 
 public class DefaultMonitor extends Manager<Monitor>
 {
@@ -186,12 +187,12 @@ public class DefaultMonitor extends Manager<Monitor>
 		
 		public void config(String key, Data value)
 		{
-			if( "manager.monitor.window".equals(key) )
+			if( Config.implodeName(Monitor.class, "window").equals(key) )
 			{
 				try { window = value.asInt(); }
 				catch(Exception e) { Manager.of(Logger.class).severe(Monitor.class, "Could not set monitor window to {}. Current value {} is unchanged.", value, window); }
 			}
-			else if( "manager.monitor.enabled".equals(key) )
+			else if( Config.implodeName(Monitor.class, "enabled").equals(key) )
 			{
 				try { enabled = value.asBool(); }
 				catch(Exception e) { Manager.of(Logger.class).severe(Monitor.class, "Could not set monitor enabled state to {}. Current value {} is unchanged.", value, enabled); }
@@ -199,22 +200,23 @@ public class DefaultMonitor extends Manager<Monitor>
 		}
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Monitor.class), StringUtils.toLowerCase(Manager.class))
-		.creator(Implementation::new)
-		.summary("Windowed monitor")
-		.description("This monitor will keep track of the counters and accumulated values for a specified amount of time. "
-			+ "Reported values are always the last completed window, not the current one, "
-			+ "and include a \"" + Implementation.COUNT + "\" property for the number of occurences and a \"" + Implementation.TOTAL + "\" property for the accumulated value.")
-		.config(new Parameter("window")
-			.summary("Time window")
-			.description("The amount of time in milliseconds to keep track of metrics and then reset to 0. If this value is modified, the window will be applied after the end of the current window.")
-			.defaultValue(Data.of(60_000)))
-		.config(new Parameter("enabled")
-			.summary("Enable monitoring")
-			.description("Whether or not the monitoring should be enabled. If set to false, then all monitoring requests are ignored.")
-			.defaultValue(Data.of(false)))
-	;
-			
-	public Template<? extends Monitor> template() { return template; }
-	public Class<? extends Monitor> entity() { return Implementation.class; }
+	protected Class<? extends DefaultMonitor.Implementation> defaultEntity() { return DefaultMonitor.Implementation.class; }
+	protected Supplier<? extends DefaultMonitor.Implementation> defaultCreator() { return DefaultMonitor.Implementation::new; }
+	
+	public Template<? extends Monitor> template()
+	{
+		return super.template()
+			.summary("Windowed monitor")
+			.description("This monitor will keep track of the counters and accumulated values for a specified amount of time. "
+				+ "Reported values are always the last completed window, not the current one, "
+				+ "and include a \"" + Implementation.COUNT + "\" property for the number of occurences and a \"" + Implementation.TOTAL + "\" property for the accumulated value.")
+			.config(Monitor.class, new Parameter("window")
+				.summary("Time window")
+				.description("The amount of time in milliseconds to keep track of metrics and then reset to 0. If this value is modified, the window will be applied after the end of the current window.")
+				.defaultValue(Data.of(60_000)))
+			.config(Monitor.class, new Parameter("enabled")
+				.summary("Enable monitoring")
+				.description("Whether or not the monitoring should be enabled. If set to false, then all monitoring requests are ignored.")
+				.defaultValue(Data.of(false)));
+	}
 }

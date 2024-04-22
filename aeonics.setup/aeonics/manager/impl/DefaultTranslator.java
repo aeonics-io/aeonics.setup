@@ -10,8 +10,10 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import aeonics.data.Data;
+import aeonics.entity.Registry;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Translator;
@@ -19,7 +21,6 @@ import aeonics.template.Parameter;
 import aeonics.template.Template;
 import aeonics.util.Hardware;
 import aeonics.util.Json;
-import aeonics.util.StringUtils;
 
 public class DefaultTranslator extends Manager<Translator>
 {
@@ -121,29 +122,32 @@ public class DefaultTranslator extends Manager<Translator>
 		}
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Translator.class), StringUtils.toLowerCase(Manager.class))
-	.creator(Implementation::new)
-	.summary("Basic translator")
-	.description("This translator implementation will load translations from JSON files in the target language folder. "
-		+ "Translation files are lazily loaded at first use only (or after being cleared). "
-		+ "Manually set entries will be available but will not be persisted.")
-	.add(new Parameter("default")
-		.summary("Default language")
-		.description("The default language of the translator. It should be a ISO-639 (2 letter) language code.")
-		.defaultValue(Data.of("en")))
-	.add(new Parameter("folder")
-		.summary("Resource folder")
-		.description("The name of the folder from which translations can be loaded. That folder should contain one subfolder per language.")
-		.defaultValue(Data.of("translations")))
-	.builder((data, instance) ->
+	protected Class<? extends DefaultTranslator.Implementation> defaultEntity() { return DefaultTranslator.Implementation.class; }
+	protected Supplier<? extends DefaultTranslator.Implementation> defaultCreator() { return DefaultTranslator.Implementation::new; }
+	
+	public Template<? extends Translator> template()
 	{
-		if( !data.isEmpty("default") ) instance.language(data.asString("default"));
-	})
-	.modifier((data, instance) ->
-	{
-		if( !data.isEmpty("default") ) instance.language(data.asString("default"));
-	});
-			
-	public Template<? extends Translator> template() { return template; }
-	public Class<? extends Translator> entity() { return Implementation.class; }
+		return super.template()
+			.summary("Basic translator")
+			.description("This translator implementation will load translations from JSON files in the target language folder. "
+				+ "Translation files are lazily loaded at first use only (or after being cleared). "
+				+ "Manually set entries will be available but will not be persisted.")
+			.add(new Parameter("default")
+				.summary("Default language")
+				.description("The default language of the translator. It should be a ISO-639 (2 letter) language code.")
+				.defaultValue(Data.of("en")))
+			.add(new Parameter("folder")
+				.summary("Resource folder")
+				.description("The name of the folder from which translations can be loaded. That folder should contain one subfolder per language.")
+				.defaultValue(Data.of("translations")))
+			.builder((data, instance) ->
+			{
+				if( !data.isEmpty("default") ) instance.language(data.asString("default"));
+				Registry.add(instance);
+			})
+			.modifier((data, instance) ->
+			{
+				if( !data.isEmpty("default") ) instance.language(data.asString("default"));
+			});
+	}
 }

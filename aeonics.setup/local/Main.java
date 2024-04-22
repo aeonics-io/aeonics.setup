@@ -43,7 +43,7 @@ public class Main extends Plugin
 		{
 			try
 			{
-				T instance = Factory.add(item.getConstructor().newInstance()).build(null);
+				T instance = item.getConstructor().newInstance().template().build();
 				instance.name(type.getSimpleName() + " Manager");
 				Registry.add(Manager.set(type, instance));
 			}
@@ -143,8 +143,10 @@ public class Main extends Plugin
 		
 		if( Manager.of(Logger.class) == Logger.CONSOLE )
 		{
-			Logger instance = new DefaultLogger().template().build(null);
+//			Manager.of(Config.class).set(DefaultLogger.class, "level", Manager.of(Config.class).get(Logger.class, "level"));
+			Logger instance = new DefaultLogger().template().build();
 			instance.name("Logger Manager");
+//			instance.level(-1);
 			Registry.add(Manager.replace(Logger.class, instance));
 		}
 		
@@ -152,27 +154,27 @@ public class Main extends Plugin
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
 			
-			Provider.Type provider = Registry.of(Provider.class).put(Factory.of(Provider.class).get(Provider.Local.class).build(null));
+			Provider.Type provider = new Provider.Local().template().build();
 			provider.name("Local password-based identity provider");
 			
-			Role.Type role = Registry.of(Role.class).put(Factory.of(Role.class).get(Role.class).build(null));
+			Role.Type role = new Role().template().build();
 			role.name("Administrator");
 			
-			Group.Type group = Registry.of(Group.class).put(Factory.of(Group.class).get(Group.class).build(null));
+			Group.Type group = new Group().template().build();
 			group.name("Administrators");
 			group.addRelation("roles", role);
 			
-			User.Type user = Registry.of(User.class).put(Factory.of(User.class).get(User.class).build(Data.map().put("__id", "admin").put("active", true)));
+			User.Type user = new User().template().build(Data.map().put("__id", "admin").put("active", true));
 			user.name("Admin User");
 			user.addRelation("groups", group);
 			user.addRelation("roles", role);
 			
 			provider.authenticate(Data.map().put("username", user.id()).put("password", "admin"));
 
-			Rule.Type rule = Registry.of(Rule.class).put(Factory.of(Rule.class).get(Rule.MatchAll.class).build(null));
+			Rule.Type rule = new Rule.MatchAll().template().build();
 			rule.name("Match all");
 			
-			Policy.Type policy = Registry.of(Policy.class).put(Factory.of(Policy.class).get(Policy.Allow.class).build(Data.map().put("scope", "topic")));
+			Policy.Type policy = new Policy.Allow().template().build(Data.map().put("scope", "topic"));
 			policy.name("Allow everyone to use any topic");
 			policy.addRelation("rule", rule);
 		}

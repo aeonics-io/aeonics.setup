@@ -7,6 +7,7 @@ import java.util.Iterator;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import aeonics.entity.Origin;
 import aeonics.entity.Registry;
@@ -15,7 +16,6 @@ import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Scheduler;
 import aeonics.template.Template;
-import aeonics.util.StringUtils;
 import aeonics.util.Tuple;
 
 public class DefaultScheduler extends Manager<Scheduler>
@@ -52,14 +52,15 @@ public class DefaultScheduler extends Manager<Scheduler>
 		
 		public void close() { origin.stop(); Registry.of(Origin.class).remove(origin.id()); origin = null; }
 		
-		Origin.Background origin = new Origin.Background()
-		{
-			{
-				// initializer block
-				initialize(category(), "", null, true);
-			}
-			
-			public void run() 
+		Origin.Background origin = new Origin() { }
+			.entity(Origin.Background.class)
+			.creator(Origin.Background::new)
+			.template()
+			.summary("Scheduler data origin")
+			.description("This data origin is used by the Scheduler to inject messages in the system.")
+			.build()
+			.<Origin.Background>cast()
+			.run(() ->
 			{
 				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Scheduler Manager");
 				while(true)
@@ -126,21 +127,35 @@ public class DefaultScheduler extends Manager<Scheduler>
 					}
 					catch(InterruptedException e) { return; }
 				}
+			});
+		
+		/*new Origin.Background()
+		{
+			{
+				// initializer block
+				initialize(category(), "", null, true);
 			}
-		};
+			
+			
+		};*/
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Scheduler.class), StringUtils.toLowerCase(Manager.class))
-	.creator(Implementation::new)
-	.summary("Task scheduler")
-	.description("This task scheduler is designed to optimize the processing power by sleeping until the next task has to run instead of waking up at regular interval. "
-		+ "This allows a finer granularity in task scheduling without requiring constant checks.")
-	.builder((data, instance) -> 
-	{
-		Registry.add(instance.origin);
-		instance.origin.start();
-	});
+	protected Class<? extends DefaultScheduler.Implementation> defaultEntity() { return DefaultScheduler.Implementation.class; }
+	protected Supplier<? extends DefaultScheduler.Implementation> defaultCreator() { return DefaultScheduler.Implementation::new; }
 	
-	public Template<? extends Scheduler> template() { return template; }
-	public Class<? extends Scheduler> entity() { return Implementation.class; }
+	public Template<? extends Scheduler> template()
+	{
+		return super.template()
+			.summary("Task scheduler")
+			.description("This task scheduler is designed to optimize the processing power by sleeping until the next task has to run instead of waking up at regular interval. "
+				+ "This allows a finer granularity in task scheduling without requiring constant checks.")
+			.builder((data, instance) -> 
+			{
+				if( instance instanceof DefaultScheduler.Implementation )
+				{
+					((DefaultScheduler.Implementation)instance).origin.name("Scheduler");
+					((DefaultScheduler.Implementation)instance).origin.start();
+				}
+			});
+	}
 }

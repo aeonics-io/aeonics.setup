@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
@@ -27,7 +28,6 @@ import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Security;
 import aeonics.template.Template;
-import aeonics.util.StringUtils;
 
 public class DefaultSecurity extends Manager<Security>
 {
@@ -338,13 +338,15 @@ public class DefaultSecurity extends Manager<Security>
 		}
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Security.class), StringUtils.toLowerCase(Manager.class))
-	.creator(Implementation::new)
-	.summary("Security manager")
-	.description("Security layer that manages tokens locally. "
-			+ "Hash functions are variable-iteration SHA-256. "
-			+ "Encryption is performed using AES/GCM/NoPadding with an enforced key size of 265 bits.");
+	protected Class<? extends DefaultSecurity.Implementation> defaultEntity() { return DefaultSecurity.Implementation.class; }
+	protected Supplier<? extends DefaultSecurity.Implementation> defaultCreator() { return DefaultSecurity.Implementation::new; }
 	
-	public Template<? extends Security> template() { return template; }
-	public Class<? extends Security> entity() { return Implementation.class; }
+	public Template<? extends Security> template()
+	{
+		return super.template()
+			.summary("Security manager")
+			.description("Security layer that manages tokens locally. "
+				+ "Hash functions are variable-iteration SHA-256. "
+				+ "Encryption is performed using AES/GCM/NoPadding with an enforced key size of 265 bits.");
+	}
 }

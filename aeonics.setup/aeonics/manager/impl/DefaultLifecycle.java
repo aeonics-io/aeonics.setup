@@ -9,13 +9,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 
 import aeonics.Boot;
 import aeonics.manager.Lifecycle;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.template.Template;
-import aeonics.util.StringUtils;
 import aeonics.util.Callback.Once;
 
 public class DefaultLifecycle extends Manager<Lifecycle>
@@ -130,12 +130,13 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 		}
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Lifecycle.class), StringUtils.toLowerCase(Manager.class))
-		.creator(Implementation::new)
-		.summary("Application Lifecycle")
-		.description("Manages the dispatching of application-wide lifecycle events.")
-		;
-		
-	public Template<? extends Lifecycle> template() { return template; }
-	public Class<? extends Lifecycle> entity() { return Implementation.class; }
+	protected Class<? extends DefaultLifecycle.Implementation> defaultEntity() { return DefaultLifecycle.Implementation.class; }
+	protected Supplier<? extends DefaultLifecycle.Implementation> defaultCreator() { return DefaultLifecycle.Implementation::new; }
+	
+	public Template<? extends Lifecycle> template()
+	{
+		return super.template()
+			.summary("Application Lifecycle")
+			.description("Manages the dispatching of application-wide lifecycle events.");
+	}
 }

@@ -9,10 +9,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import aeonics.data.Data;
 import aeonics.entity.Storage;
+import aeonics.manager.Config;
 import aeonics.manager.Executor;
 import aeonics.manager.Executor.Task;
 import aeonics.manager.Logger;
@@ -21,7 +23,6 @@ import aeonics.manager.Snapshot;
 import aeonics.template.Factory;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
-import aeonics.util.StringUtils;
 
 public class DefaultSnapshot extends Manager<Snapshot>
 {
@@ -164,7 +165,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 		private Storage.Type store = null; 
 		public void config(String key, Data value)
 		{
-			if( "manager.snapshot.path".equals(key) )
+			if( Config.implodeName(Snapshot.class, "path").equals(key) )
 			{
 				try { store = Factory.of(Storage.class).get(Storage.File.class).build(Data.map().put("root", value)); }
 				catch(Exception e)
@@ -176,15 +177,17 @@ public class DefaultSnapshot extends Manager<Snapshot>
 		}
 	}
 	
-	private static Template<Implementation> template = new Template<Implementation>(Implementation.class, StringUtils.toLowerCase(Snapshot.class), StringUtils.toLowerCase(Manager.class))
-	.creator(Implementation::new)
-	.summary("Persistent snapshot")
-	.description("Manages system snapshots in a specified local directory and stores data as separate JSON files for each plugin.")
-	.config(new Parameter("path")
-		.summary("Snapshot folder path")
-		.description("The path to the snapshot folder")
-		.defaultValue(Data.of("shapshots")));
+	protected Class<? extends DefaultSnapshot.Implementation> defaultEntity() { return DefaultSnapshot.Implementation.class; }
+	protected Supplier<? extends DefaultSnapshot.Implementation> defaultCreator() { return DefaultSnapshot.Implementation::new; }
 	
-	public Template<? extends Snapshot> template() { return template; }
-	public Class<? extends Snapshot> entity() { return Implementation.class; }
+	public Template<? extends Snapshot> template()
+	{
+		return super.template()
+			.summary("Persistent snapshot")
+			.description("Manages system snapshots in a specified local directory and stores data as separate JSON files for each plugin.")
+			.config(Snapshot.class, new Parameter("path")
+				.summary("Snapshot folder path")
+				.description("The path to the snapshot folder")
+				.defaultValue(Data.of("shapshots")));
+	}
 }
