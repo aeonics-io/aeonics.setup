@@ -345,7 +345,7 @@ public class DefaultNetwork extends Manager<Network>
 		});
 	}
 	
-	protected Class<? extends DefaultNetwork.Implementation> defaultEntity() { return DefaultNetwork.Implementation.class; }
+	protected Class<? extends DefaultNetwork.Implementation> defaultTarget() { return DefaultNetwork.Implementation.class; }
 	protected Supplier<? extends DefaultNetwork.Implementation> defaultCreator() { return DefaultNetwork.Implementation::new; }
 	
 	public Template<? extends Network> template()

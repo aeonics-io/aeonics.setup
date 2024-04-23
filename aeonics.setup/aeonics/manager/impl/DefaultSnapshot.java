@@ -167,7 +167,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 		{
 			if( Config.implodeName(Snapshot.class, "path").equals(key) )
 			{
-				try { store = Factory.of(Storage.class).get(Storage.File.class).build(Data.map().put("root", value)); }
+				try { store = Factory.of(Storage.class).get(Storage.File.class).build(Data.map().put("root", value)).name("Snapshot storage"); }
 				catch(Exception e)
 				{
 					Manager.of(Logger.class).warning(Snapshot.class, "Could not initialize destination storage {}", value);
@@ -177,7 +177,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 		}
 	}
 	
-	protected Class<? extends DefaultSnapshot.Implementation> defaultEntity() { return DefaultSnapshot.Implementation.class; }
+	protected Class<? extends DefaultSnapshot.Implementation> defaultTarget() { return DefaultSnapshot.Implementation.class; }
 	protected Supplier<? extends DefaultSnapshot.Implementation> defaultCreator() { return DefaultSnapshot.Implementation::new; }
 	
 	public Template<? extends Snapshot> template()

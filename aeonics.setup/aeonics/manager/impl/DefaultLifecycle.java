@@ -130,7 +130,7 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 		}
 	}
 	
-	protected Class<? extends DefaultLifecycle.Implementation> defaultEntity() { return DefaultLifecycle.Implementation.class; }
+	protected Class<? extends DefaultLifecycle.Implementation> defaultTarget() { return DefaultLifecycle.Implementation.class; }
 	protected Supplier<? extends DefaultLifecycle.Implementation> defaultCreator() { return DefaultLifecycle.Implementation::new; }
 	
 	public Template<? extends Lifecycle> template()

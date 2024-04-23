@@ -97,7 +97,7 @@ public class DefaultTimeout extends Manager<Timeout>
 		});
 	}
 	
-	protected Class<? extends DefaultTimeout.Implementation> defaultEntity() { return DefaultTimeout.Implementation.class; }
+	protected Class<? extends DefaultTimeout.Implementation> defaultTarget() { return DefaultTimeout.Implementation.class; }
 	protected Supplier<? extends DefaultTimeout.Implementation> defaultCreator() { return DefaultTimeout.Implementation::new; }
 	
 	public Template<? extends Timeout> template()

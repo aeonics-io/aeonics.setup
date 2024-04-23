@@ -122,7 +122,7 @@ public class DefaultTranslator extends Manager<Translator>
 		}
 	}
 	
-	protected Class<? extends DefaultTranslator.Implementation> defaultEntity() { return DefaultTranslator.Implementation.class; }
+	protected Class<? extends DefaultTranslator.Implementation> defaultTarget() { return DefaultTranslator.Implementation.class; }
 	protected Supplier<? extends DefaultTranslator.Implementation> defaultCreator() { return DefaultTranslator.Implementation::new; }
 	
 	public Template<? extends Translator> template()

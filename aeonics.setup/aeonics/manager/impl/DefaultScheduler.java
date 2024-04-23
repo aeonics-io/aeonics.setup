@@ -53,7 +53,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 		public void close() { origin.stop(); Registry.of(Origin.class).remove(origin.id()); origin = null; }
 		
 		Origin.Background origin = new Origin() { }
-			.entity(Origin.Background.class)
+			.target(Origin.Background.class)
 			.creator(Origin.Background::new)
 			.template()
 			.summary("Scheduler data origin")
@@ -140,7 +140,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 		};*/
 	}
 	
-	protected Class<? extends DefaultScheduler.Implementation> defaultEntity() { return DefaultScheduler.Implementation.class; }
+	protected Class<? extends DefaultScheduler.Implementation> defaultTarget() { return DefaultScheduler.Implementation.class; }
 	protected Supplier<? extends DefaultScheduler.Implementation> defaultCreator() { return DefaultScheduler.Implementation::new; }
 	
 	public Template<? extends Scheduler> template()

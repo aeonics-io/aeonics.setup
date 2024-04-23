@@ -338,7 +338,7 @@ public class DefaultSecurity extends Manager<Security>
 		}
 	}
 	
-	protected Class<? extends DefaultSecurity.Implementation> defaultEntity() { return DefaultSecurity.Implementation.class; }
+	protected Class<? extends DefaultSecurity.Implementation> defaultTarget() { return DefaultSecurity.Implementation.class; }
 	protected Supplier<? extends DefaultSecurity.Implementation> defaultCreator() { return DefaultSecurity.Implementation::new; }
 	
 	public Template<? extends Security> template()

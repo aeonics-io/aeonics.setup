@@ -29,7 +29,7 @@ public class DefaultLogger extends Manager<Logger>
 		}
 	}
 	
-	protected Class<? extends DefaultLogger.Implementation> defaultEntity() { return DefaultLogger.Implementation.class; }
+	protected Class<? extends DefaultLogger.Implementation> defaultTarget() { return DefaultLogger.Implementation.class; }
 	protected Supplier<? extends DefaultLogger.Implementation> defaultCreator() { return DefaultLogger.Implementation::new; }
 	
 	public Template<? extends Logger> template()

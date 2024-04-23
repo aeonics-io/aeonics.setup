@@ -72,7 +72,7 @@ public class DefaultExecutor extends Manager<Executor>
 		public <T> Task<T> io(Supplier<T> task) { return normal(task); }
 	}
 	
-	protected Class<? extends DefaultExecutor.Implementation> defaultEntity() { return DefaultExecutor.Implementation.class; }
+	protected Class<? extends DefaultExecutor.Implementation> defaultTarget() { return DefaultExecutor.Implementation.class; }
 	protected Supplier<? extends DefaultExecutor.Implementation> defaultCreator() { return DefaultExecutor.Implementation::new; }
 	
 	public Template<? extends Executor> template()

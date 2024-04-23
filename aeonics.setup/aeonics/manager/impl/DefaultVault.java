@@ -64,7 +64,7 @@ public class DefaultVault extends Manager<Vault>
 		}
 	}
 	
-	protected Class<? extends DefaultVault.Implementation> defaultEntity() { return DefaultVault.Implementation.class; }
+	protected Class<? extends DefaultVault.Implementation> defaultTarget() { return DefaultVault.Implementation.class; }
 	protected Supplier<? extends DefaultVault.Implementation> defaultCreator() { return DefaultVault.Implementation::new; }
 	
 	public Template<? extends Vault> template()

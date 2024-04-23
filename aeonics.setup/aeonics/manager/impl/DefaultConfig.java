@@ -126,7 +126,7 @@ public class DefaultConfig extends Manager<Config>
 		}
 	}
 	
-	protected Class<? extends DefaultConfig.Implementation> defaultEntity() { return DefaultConfig.Implementation.class; }
+	protected Class<? extends DefaultConfig.Implementation> defaultTarget() { return DefaultConfig.Implementation.class; }
 	protected Supplier<? extends DefaultConfig.Implementation> defaultCreator() { return DefaultConfig.Implementation::new; }
 	
 	public Template<? extends Config> template()

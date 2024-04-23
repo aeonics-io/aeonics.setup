@@ -200,7 +200,7 @@ public class DefaultMonitor extends Manager<Monitor>
 		}
 	}
 	
-	protected Class<? extends DefaultMonitor.Implementation> defaultEntity() { return DefaultMonitor.Implementation.class; }
+	protected Class<? extends DefaultMonitor.Implementation> defaultTarget() { return DefaultMonitor.Implementation.class; }
 	protected Supplier<? extends DefaultMonitor.Implementation> defaultCreator() { return DefaultMonitor.Implementation::new; }
 	
 	public Template<? extends Monitor> template()
