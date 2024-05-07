@@ -85,7 +85,7 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 						
 						h.accept(null);
 					}
-					catch(Exception e)
+					catch(Throwable e)
 					{
 						Manager.of(Logger.class).warning(Lifecycle.class, e);
 					}

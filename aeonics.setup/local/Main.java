@@ -143,10 +143,8 @@ public class Main extends Plugin
 		
 		if( Manager.of(Logger.class) == Logger.CONSOLE )
 		{
-//			Manager.of(Config.class).set(DefaultLogger.class, "level", Manager.of(Config.class).get(Logger.class, "level"));
 			Logger instance = new DefaultLogger().template().build();
 			instance.name("Logger Manager");
-//			instance.level(-1);
 			Registry.add(Manager.replace(Logger.class, instance));
 		}
 		
@@ -157,19 +155,12 @@ public class Main extends Plugin
 			Provider.Type provider = new Provider.Local().template().build();
 			provider.name("Local password-based identity provider");
 			
-			Role.Type role = new Role().template().build();
-			role.name("Administrator");
-			
-			Group.Type group = new Group().template().build();
-			group.name("Administrators");
-			group.addRelation("roles", role);
-			
 			User.Type user = new User().template().build(Data.map().put("__id", "admin").put("active", true));
 			user.name("Admin User");
-			user.addRelation("groups", group);
-			user.addRelation("roles", role);
+			user.addRelation("roles", Role.SUPERADMIN);
 			
-			provider.authenticate(Data.map().put("username", user.id()).put("password", "admin"));
+			// initialize the default provider with user/pass
+			provider.join(Data.map().put("username", user.id()).put("password", "admin"), user);
 
 			Rule.Type rule = new Rule.MatchAll().template().build();
 			rule.name("Match all");

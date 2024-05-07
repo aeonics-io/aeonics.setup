@@ -7,11 +7,11 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import javax.crypto.Cipher;
@@ -20,13 +20,19 @@ import javax.crypto.spec.SecretKeySpec;
 
 import aeonics.data.Data;
 import aeonics.entity.Registry;
+import aeonics.entity.Storage;
 import aeonics.entity.security.Policy;
 import aeonics.entity.security.Provider;
+import aeonics.entity.security.Role;
 import aeonics.entity.security.Token;
 import aeonics.entity.security.User;
+import aeonics.manager.Config;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Security;
+import aeonics.manager.Timeout;
+import aeonics.manager.Timeout.Tracker;
+import aeonics.template.Parameter;
 import aeonics.template.Template;
 
 public class DefaultSecurity extends Manager<Security>
@@ -208,6 +214,7 @@ public class DefaultSecurity extends Manager<Security>
 		{
 			if( user == null ) return false;
 			if( user == User.SYSTEM ) return true;
+			if( user.hasRole(Role.SUPERADMIN) ) return true;
 			
 			return !isExplicitlyDenied(user, scope, context) && isExplicitlyAllowed(user, scope, context);
 		}
@@ -216,6 +223,7 @@ public class DefaultSecurity extends Manager<Security>
 		{
 			if( user == null || scope == null ) return false;
 			if( user == User.SYSTEM ) return false;
+			if( user.hasRole(Role.SUPERADMIN) ) return false;
 			
 			try
 			{
@@ -238,6 +246,7 @@ public class DefaultSecurity extends Manager<Security>
 		{
 			if( user == null || scope == null ) return false;
 			if( user == User.SYSTEM ) return true;
+			if( user.hasRole(Role.SUPERADMIN) ) return true;
 			
 			try
 			{
@@ -273,7 +282,11 @@ public class DefaultSecurity extends Manager<Security>
 			{
 				if( exclusive ) clearTokens(user);
 				Token t = new Token(user, validity, scopes);
-				tokens.put(t.value(), t);
+				Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Security.class, "token.storage").asString());
+				if( storage == null )
+					tokens.put(t.value(), t);
+				else
+					storage.put("token/" + t.value(), t.export());
 				return t;
 			}
 			catch(Exception e)
@@ -289,10 +302,25 @@ public class DefaultSecurity extends Manager<Security>
 			
 			try
 			{
-				Token t = tokens.get(token);
+				Token t = null;
+				Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Security.class, "token.storage").asString());
+				if( storage == null )
+					t = tokens.get(token);
+				else if( storage.contains("token/" + token) )
+					t = new Token(storage.getData("token/" + token));
+				
 				if( t == null ) return null;
-				if( !t.isValid() ) { tokens.remove(token); return null; }
-				if( reset ) t.reset();
+				if( !t.isValid() )
+				{
+					if( storage == null ) tokens.remove(token);
+					else storage.remove("token/" + token);
+					return null; 
+				}
+				if( reset )
+				{
+					t.reset();
+					if( storage != null ) storage.put("token/" + token, t.export());
+				}
 				return t;
 			}
 			catch(Exception e)
@@ -308,7 +336,11 @@ public class DefaultSecurity extends Manager<Security>
 			
 			try
 			{
-				tokens.remove(token.value());
+				Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Security.class, "token.storage").asString());
+				if( storage == null )
+					tokens.remove(token.value());
+				else
+					storage.remove("token/" + token.value());
 			}
 			catch(Exception e)
 			{
@@ -323,12 +355,19 @@ public class DefaultSecurity extends Manager<Security>
 			try
 			{
 				String id = user.id();
+				Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Security.class, "token.storage").asString());
 				
-				Iterator<Token> i = tokens.values().iterator();
-				while( i.hasNext() )
+				if( storage == null ) 
+					tokens.values().removeIf((t) -> { return t.isFor(id) || !t.isValid(); });
+				else
 				{
-					Token t = i.next();
-					if( t != null && (t.isFor(id) || !t.isValid()) ) i.remove();
+					for( String token : storage.list("token/") )
+					{
+						Data m = storage.getData(token);
+						if( m == null || m.isEmpty() ) continue;
+						Token t = new Token(m);
+						if( t.isFor(id) || !t.isValid() ) storage.remove(token);
+					}
 				}
 			}
 			catch(Exception e)
@@ -336,6 +375,47 @@ public class DefaultSecurity extends Manager<Security>
 				Manager.of(Logger.class).warning(Security.class, e);
 			}
 		}
+		
+		private Tracker<Void> tracker = new Tracker<Void>(null) 
+		{
+			private long next = 0;
+			public long delay()
+			{
+				if( next == 0 || next < System.currentTimeMillis() ) checkNow();
+				return next - System.currentTimeMillis();
+			}
+			
+			private void checkNow()
+			{
+				final Long now = System.currentTimeMillis();
+				AtomicLong min = new AtomicLong(300_000);
+				Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Security.class, "token.storage").asString());
+				
+				if( storage == null )
+				{
+					tokens.values().removeIf((t) ->
+					{
+						if( t == null || !t.isValid() ) return true;
+						min.set(Math.min(min.get(), t.notAfter() - now));
+						return false;
+					});
+				}
+				else
+				{
+					for( String token : storage.list("token/") )
+					{
+						Data m = storage.getData(token);
+						if( m == null || m.isEmpty() ) continue;
+						Token t = new Token(m);
+						if( !t.isValid() ) storage.remove(token);
+						else min.set(Math.min(min.get(), t.notAfter() - now));
+					}
+				}
+				
+				if( min.get() <= 0 ) min.set(300_000);
+				next = now + min.get();
+			}
+		};
 	}
 	
 	protected Class<? extends DefaultSecurity.Implementation> defaultTarget() { return DefaultSecurity.Implementation.class; }
@@ -347,6 +427,14 @@ public class DefaultSecurity extends Manager<Security>
 			.summary("Security manager")
 			.description("Security layer that manages tokens locally. "
 				+ "Hash functions are variable-iteration SHA-256. "
-				+ "Encryption is performed using AES/GCM/NoPadding with an enforced key size of 265 bits.");
+				+ "Encryption is performed using AES/GCM/NoPadding with an enforced key size of 265 bits.")
+			.config(Security.class, new Parameter("token.storage")
+				.summary("Token storage")
+				.description("The name or id of the storage for access tokens. If the storage does not exist, a local temporary (ouf-of-storage) location is used instead.")
+				.defaultValue(Data.empty()))
+			.builder((data, instance) ->
+			{
+				Manager.of(Timeout.class).watch(((Implementation)instance).tracker);
+			});
 	}
 }

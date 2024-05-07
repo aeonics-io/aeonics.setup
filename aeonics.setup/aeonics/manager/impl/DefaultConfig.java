@@ -4,11 +4,11 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import aeonics.data.Data;
 import aeonics.entity.Registry;
+import aeonics.entity.security.Functions.BiConsumer;
 import aeonics.manager.Config;
 import aeonics.manager.Manager;
 import aeonics.template.Parameter;
@@ -90,7 +90,7 @@ public class DefaultConfig extends Manager<Config>
 			}
 		}
 		
-		public void watch(String type, String name, Consumer<Tuple<String, Data>> callback)
+		public void watch(String type, String name, BiConsumer<String, Data> callback)
 		{
 			Objects.requireNonNull(type);
 			Objects.requireNonNull(name);
@@ -103,7 +103,7 @@ public class DefaultConfig extends Manager<Config>
 				if( value == null ) store.put(key, value = new Tuple<>(null, new Tuple<>(new Callback<Tuple<String, Data>>(), new Parameter(name.toLowerCase(Locale.ROOT).replace('_', '.')))));
 				else if( value.b.a == null ) value.b.a = new Callback<Tuple<String, Data>>();
 			}
-			value.b.a.then(callback);
+			value.b.a.then((v) -> { callback.accept(v.a, v.b); });
 			value.b.a.trigger(Tuple.of(key, value.a));
 		}
 		

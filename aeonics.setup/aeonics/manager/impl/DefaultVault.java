@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 import aeonics.data.Data;
+import aeonics.entity.Entity;
 import aeonics.manager.Manager;
 import aeonics.manager.Security;
 import aeonics.manager.Vault;
@@ -20,6 +21,10 @@ public class DefaultVault extends Manager<Vault>
 		public Data get(String name, String key) throws SecurityException
 		{
 			Objects.requireNonNull(name);
+			
+			if( name.length() > 0 && name.charAt(0) == '#' && StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).getCallerClass() != this.getClass() )
+				throw new SecurityException("Name reserved for owning entity.");
+			
 			if( key == null ) key = Manager.of(Security.class).hash(key);
 			
 			String value = store.get(name);
@@ -31,6 +36,10 @@ public class DefaultVault extends Manager<Vault>
 		public void set(String name, Data value, String key) throws SecurityException
 		{
 			Objects.requireNonNull(name);
+			
+			if( name.length() > 0 && name.charAt(0) == '#' && StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).getCallerClass() != this.getClass() )
+				throw new SecurityException("Name reserved for owning entity.");
+			
 			if( key == null ) key = Manager.of(Security.class).hash(key);
 			if( value == null ) value = Data.empty();
 			
@@ -49,6 +58,11 @@ public class DefaultVault extends Manager<Vault>
 		
 		public void remove(String name, String key) throws SecurityException
 		{
+			Objects.requireNonNull(name);
+			
+			if( name.length() > 0 && name.charAt(0) == '#' && StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).getCallerClass() != this.getClass() )
+				throw new SecurityException("Name reserved for owning entity.");
+			
 			String value = store.get(name);
 			if( value == null ) return;
 			if( key == null ) key = Manager.of(Security.class).hash(key);
@@ -61,6 +75,30 @@ public class DefaultVault extends Manager<Vault>
 				store.remove(name);
 				return;
 			}
+		}
+
+		public Data get(String name, Entity owner) throws SecurityException
+		{
+			StackWalker walker = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+			if( walker.getCallerClass() != owner.getClass() )
+				throw new SecurityException("This method can only be called from the owning entity");
+			return get("#"+owner.type()+"@"+owner.id()+":"+name, owner.id());
+		}
+
+		public void set(String name, Data value, Entity owner) throws SecurityException
+		{
+			StackWalker walker = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+			if( walker.getCallerClass() != owner.getClass() )
+				throw new SecurityException("This method can only be called from the owning entity");
+			set("#"+owner.type()+"@"+owner.id()+":"+name, value, owner.id());
+		}
+
+		public void remove(String name, Entity owner) throws SecurityException
+		{
+			StackWalker walker = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+			if( walker.getCallerClass() != owner.getClass() )
+				throw new SecurityException("This method can only be called from the owning entity");
+			remove("#"+owner.type()+"@"+owner.id()+":"+name, owner.id());
 		}
 	}
 	
