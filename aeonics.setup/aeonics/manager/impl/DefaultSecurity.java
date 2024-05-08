@@ -306,7 +306,7 @@ public class DefaultSecurity extends Manager<Security>
 				Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Security.class, "token.storage").asString());
 				if( storage == null )
 					t = tokens.get(token);
-				else if( storage.contains("token/" + token) )
+				else if( storage.containsEntry("token/" + token) )
 					t = new Token(storage.getData("token/" + token));
 				
 				if( t == null ) return null;

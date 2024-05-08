@@ -152,22 +152,25 @@ public class Main extends Plugin
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
 			
-			Provider.Type provider = new Provider.Local().template().build();
-			provider.name("Local password-based identity provider");
-			
-			User.Type user = new User().template().build(Data.map().put("__id", "admin").put("active", true));
-			user.name("Admin User");
-			user.addRelation("roles", Role.SUPERADMIN);
+			User.Type user = new User().template().build(Data.map().put("__id", "admin").put("active", true))
+				.name("Admin User")
+				.addRelation("roles", Role.SUPERADMIN)
+				.addRelation("groups", new Group().template().build()
+					.name("Administrators")
+					.addRelation("roles", new Role().template().build().name("Admin")))
+				.<User.Type>cast()
+				;
 			
 			// initialize the default provider with user/pass
+			Provider.Type provider = new Provider.Local().template().build()
+				.name("Local password-based identity provider");
 			provider.join(Data.map().put("username", user.id()).put("password", "admin"), user);
 
-			Rule.Type rule = new Rule.MatchAll().template().build();
-			rule.name("Match all");
-			
-			Policy.Type policy = new Policy.Allow().template().build(Data.map().put("scope", "topic"));
-			policy.name("Allow everyone to use any topic");
-			policy.addRelation("rule", rule);
+			new Policy.Allow().template().build(Data.map().put("scope", "topic"))
+				.name("Allow everyone to use any topic")
+				.addRelation("rule", new Rule.MatchAll().template().build().name("Match all"))
+				.<Policy.Type>cast()
+				;
 		}
 	}
 	

@@ -533,7 +533,7 @@ public class DefaultNetwork extends Manager<Network>
 		public SecureConnectionImplementation(Connection source, SecurityOptions options)
 		{
 			this.source = source; 
-			this.source.onClose().then((c) -> { this.onClose().trigger(this); });
+			this.source.onClose().then(Callback.once((c) -> { this.onClose().trigger(this); }));
 			this.source.onReady().then((c) -> { this.read(); });
 			
 			ssl = Network.sslEngine(options, source.isClientMode());
@@ -711,6 +711,8 @@ public class DefaultNetwork extends Manager<Network>
 			boolean wasok = false;
 			do
 			{
+				if( !encrypted.get().hasRemaining() ) break;
+				
 				wasok = false;
 				
 				try( TLS_Buffer decrypted = TLS_BufferPool.poll() )

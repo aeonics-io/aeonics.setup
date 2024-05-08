@@ -8,7 +8,6 @@ import java.util.function.Supplier;
 
 import aeonics.data.Data;
 import aeonics.entity.Registry;
-import aeonics.entity.security.Functions.BiConsumer;
 import aeonics.manager.Config;
 import aeonics.manager.Manager;
 import aeonics.template.Parameter;
@@ -16,6 +15,7 @@ import aeonics.template.Template;
 import aeonics.util.Callback;
 import aeonics.util.StringUtils;
 import aeonics.util.Tuple;
+import aeonics.util.Functions.BiConsumer;
 
 public class DefaultConfig extends Manager<Config>
 {
