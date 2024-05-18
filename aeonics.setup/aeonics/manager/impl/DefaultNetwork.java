@@ -670,9 +670,9 @@ public class DefaultNetwork extends Manager<Network>
 				// or it will free some space after unwrap and we can fit the remaining data.
 				
 				boolean partial = false;
+				int mark = 0;
 				do
 				{
-					int mark = 0;
 					if( data.length > encrypted.get().remaining() )
 					{
 						partial = true;
@@ -685,9 +685,10 @@ public class DefaultNetwork extends Manager<Network>
 						encrypted.get().put(data);
 						partial = false;
 					}
-					encrypted.get().flip();
 					
-					read3();
+					encrypted.get().flip(); // switch to read mode
+					read3(); // encrypted gets back as read mode
+					encrypted.get().compact(); // switch to write mode
 				} while( partial );
 			}
 			
@@ -703,7 +704,6 @@ public class DefaultNetwork extends Manager<Network>
 			if( handshaking.get() )
 			{
 				handshake(encrypted.get());
-				encrypted.get().compact();
 				return;
 			}
 			
@@ -718,7 +718,7 @@ public class DefaultNetwork extends Manager<Network>
 				try( TLS_Buffer decrypted = TLS_BufferPool.poll() )
 				{
 					SSLEngineResult status = ssl.unwrap(encrypted.get(), decrypted.get());
-					
+
 					if( status.getHandshakeStatus() == HandshakeStatus.NEED_TASK )
 					{
 						// handshake task can happen at any time
@@ -742,8 +742,6 @@ public class DefaultNetwork extends Manager<Network>
 								byte[] d = new byte[decrypted.get().remaining()]; 
 								decrypted.get().get(d);
 								fifo.offer(d);
-								encrypted.get().compact();
-								encrypted.get().flip();
 							}
 							decrypted.get().clear();
 

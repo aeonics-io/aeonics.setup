@@ -163,8 +163,9 @@ public class Main extends Plugin
 			
 			// initialize the default provider with user/pass
 			Provider.Type provider = new Provider.Local().template().build()
-				.name("Local password-based identity provider");
-			provider.join(Data.map().put("username", user.id()).put("password", "admin"), user);
+				.name("Local identity provider");
+			if( provider.join(Data.map().put("username", user.id()).put("password", "Change the admin password ASAP!"), user) != user )
+				Manager.of(Logger.class).severe(Security.class, "Default user could not join local provider");
 
 			new Policy.Allow().template().build(Data.map().put("scope", "topic"))
 				.name("Allow everyone to use any topic")

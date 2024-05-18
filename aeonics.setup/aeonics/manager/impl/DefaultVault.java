@@ -11,6 +11,7 @@ import aeonics.manager.Manager;
 import aeonics.manager.Security;
 import aeonics.manager.Vault;
 import aeonics.template.Template;
+import aeonics.util.Json;
 
 public class DefaultVault extends Manager<Vault>
 {
@@ -26,11 +27,10 @@ public class DefaultVault extends Manager<Vault>
 				throw new SecurityException("Name reserved for owning entity.");
 			
 			if( key == null ) key = Manager.of(Security.class).hash(key);
-			
 			String value = store.get(name);
 			if( value == null ) return Data.empty();
 			
-			return Data.of(Manager.of(Security.class).decrypt(value, key));
+			return Json.decode(Manager.of(Security.class).decrypt(value, key));
 		}
 
 		public void set(String name, Data value, String key) throws SecurityException
