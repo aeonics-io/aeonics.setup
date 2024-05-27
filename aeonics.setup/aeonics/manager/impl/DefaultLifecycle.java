@@ -132,7 +132,8 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 	
 	protected Class<? extends DefaultLifecycle.Implementation> defaultTarget() { return DefaultLifecycle.Implementation.class; }
 	protected Supplier<? extends DefaultLifecycle.Implementation> defaultCreator() { return DefaultLifecycle.Implementation::new; }
-	
+
+	@Override
 	public Template<? extends Lifecycle> template()
 	{
 		return super.template()

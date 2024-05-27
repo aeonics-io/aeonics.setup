@@ -113,6 +113,7 @@ public class Main extends Plugin
 	
 	private void afterLoad()
 	{
+		/* nothing to do */
 	}
 	
 	private void beforeConfig()
@@ -124,6 +125,7 @@ public class Main extends Plugin
 	
 	private void onConfig()
 	{
+		/* nothing to do */
 	}
 	
 	private void afterConfig()
@@ -177,36 +179,36 @@ public class Main extends Plugin
 	
 	private void onRun()
 	{
-		
+		/* nothing to do */
 	}
 	
 	private void afterRun()
 	{
-		
+		/* nothing to do */
 	}
 	
 	private void beforeShutdown()
 	{
-		
+		/* nothing to do */
 	}
 	
 	private void onShutdown()
 	{
-		
+		/* nothing to do */
 	}
 	
 	private void afterShutdown()
 	{
-		
+		/* nothing to do */
 	}
 	
 	private void onSnapshot(Data data)
 	{
-		
+		/* nothing to do */
 	}
 	
 	private void onRestore(Data data)
 	{
-		
+		/* nothing to do */
 	}
 }

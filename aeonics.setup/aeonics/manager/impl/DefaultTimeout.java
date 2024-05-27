@@ -36,7 +36,7 @@ public class DefaultTimeout extends Manager<Timeout>
 		{
 			synchronized(locker)
 			{
-				locker.notify();
+				locker.notifyAll();
 			}
 		}
 		
@@ -99,7 +99,8 @@ public class DefaultTimeout extends Manager<Timeout>
 	
 	protected Class<? extends DefaultTimeout.Implementation> defaultTarget() { return DefaultTimeout.Implementation.class; }
 	protected Supplier<? extends DefaultTimeout.Implementation> defaultCreator() { return DefaultTimeout.Implementation::new; }
-	
+
+	@Override
 	public Template<? extends Timeout> template()
 	{
 		return super.template()

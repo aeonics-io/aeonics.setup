@@ -45,7 +45,7 @@ public class DefaultSecurity extends Manager<Security>
 		//
 		// =========================================
 		
-		private final int keySize = 32;
+		private static final int keySize = 32;
 		
 		/**
 		 * Make sure the key meets the keySize requirement of 256 bits (32 bytes)
@@ -308,7 +308,7 @@ public class DefaultSecurity extends Manager<Security>
 					t = tokens.get(token);
 				else if( storage.containsEntry("token/" + token) )
 					t = new Token(storage.getData("token/" + token));
-				
+
 				if( t == null ) return null;
 				if( !t.isValid() )
 				{
@@ -420,7 +420,8 @@ public class DefaultSecurity extends Manager<Security>
 	
 	protected Class<? extends DefaultSecurity.Implementation> defaultTarget() { return DefaultSecurity.Implementation.class; }
 	protected Supplier<? extends DefaultSecurity.Implementation> defaultCreator() { return DefaultSecurity.Implementation::new; }
-	
+
+	@Override
 	public Template<? extends Security> template()
 	{
 		return super.template()

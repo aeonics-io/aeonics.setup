@@ -32,7 +32,8 @@ public class DefaultConfig extends Manager<Config>
 			{
 				String key = implodeName(type, parameter.name());
 				Tuple<Data, Tuple<Callback<Tuple<String, Data>>, Parameter>> value = store.get(key);
-				if( value == null ) store.put(key, value = new Tuple<>(parameter.defaultValue(), new Tuple<>(null, parameter)));
+				if( value == null )
+					store.put(key, new Tuple<>(parameter.defaultValue(), new Tuple<>(null, parameter)));
 				else value.b.b = parameter;
 			}
 		}
@@ -63,8 +64,7 @@ public class DefaultConfig extends Manager<Config>
 			synchronized(store)
 			{
 				String key = implodeName(type, name);
-				Tuple<Data, Tuple<Callback<Tuple<String, Data>>, Parameter>> v = store.get(key);
-				if( v == null ) store.put(key, v = new Tuple<>(null, new Tuple<>(null, new Parameter(name.toLowerCase(Locale.ROOT).replace('_', '.')).optional(true))));
+				Tuple<Data, Tuple<Callback<Tuple<String, Data>>, Parameter>> v = store.computeIfAbsent(key, (k) -> new Tuple<>(null, new Tuple<>(null, new Parameter(name.toLowerCase(Locale.ROOT).replace('_', '.')).optional(true))));
 				if( !v.b.b.validate(value) ) throw new IllegalArgumentException("Invalid value for parameter " + key);
 				Data old = v.a;
 				v.a = value;
@@ -100,10 +100,14 @@ public class DefaultConfig extends Manager<Config>
 			synchronized(store)
 			{
 				value = store.get(key);
-				if( value == null ) store.put(key, value = new Tuple<>(null, new Tuple<>(new Callback<Tuple<String, Data>>(), new Parameter(name.toLowerCase(Locale.ROOT).replace('_', '.')))));
+				if( value == null )
+				{
+					value = new Tuple<>(null, new Tuple<>(new Callback<Tuple<String, Data>>(), new Parameter(name.toLowerCase(Locale.ROOT).replace('_', '.'))));
+					store.put(key, value);
+				}
 				else if( value.b.a == null ) value.b.a = new Callback<Tuple<String, Data>>();
 			}
-			value.b.a.then((v) -> { callback.accept(v.a, v.b); });
+			value.b.a.then((v) -> callback.accept(v.a, v.b));
 			value.b.a.trigger(Tuple.of(key, value.a));
 		}
 		
@@ -128,7 +132,8 @@ public class DefaultConfig extends Manager<Config>
 	
 	protected Class<? extends DefaultConfig.Implementation> defaultTarget() { return DefaultConfig.Implementation.class; }
 	protected Supplier<? extends DefaultConfig.Implementation> defaultCreator() { return DefaultConfig.Implementation::new; }
-	
+
+	@Override
 	public Template<? extends Config> template()
 	{
 		return super.template()

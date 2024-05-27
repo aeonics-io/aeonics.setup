@@ -85,6 +85,7 @@ public class DefaultTranslator extends Manager<Translator>
 					
 					Files.walkFileTree(dir, new SimpleFileVisitor<Path>()
 					{
+						@Override
 						public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException
 						{
 							if( !attrs.isRegularFile() || !Files.isReadable(file) ) return FileVisitResult.CONTINUE;
@@ -124,7 +125,8 @@ public class DefaultTranslator extends Manager<Translator>
 	
 	protected Class<? extends DefaultTranslator.Implementation> defaultTarget() { return DefaultTranslator.Implementation.class; }
 	protected Supplier<? extends DefaultTranslator.Implementation> defaultCreator() { return DefaultTranslator.Implementation::new; }
-	
+
+	@Override
 	public Template<? extends Translator> template()
 	{
 		return super.template()

@@ -112,8 +112,7 @@ public class DefaultNetwork extends Manager<Network>
 		public Connection securize(Connection unsecure, SecurityOptions options)
 		{
 			if( options == null || unsecure.isSecure() ) return unsecure;			
-			Connection s = new SecureConnectionImplementation(unsecure, options);
-			return s;
+			return new SecureConnectionImplementation(unsecure, options);
 		}
 		
 		public void refresh()
@@ -130,7 +129,7 @@ public class DefaultNetwork extends Manager<Network>
 		// =========================================
 		
 		private Selector selector;
-		private int BUFFER_SIZE = 1024*64; // default TCP packet size
+		private static final int BUFFER_SIZE = 1024*64; // default TCP packet size
 		private ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
 		
 		private void onAcceptable(SelectionKey key) throws Exception
@@ -150,7 +149,7 @@ public class DefaultNetwork extends Manager<Network>
 				Connection secure = (s.isSecure() ? securize(unsecure, s.security()) : null);
 				
 				s.onAccept().trigger(secure == null ? unsecure : secure)
-					.then(() -> { onConnectable2(unsecure); });
+					.then(() -> onConnectable2(unsecure));
 			}
 			while( true );
 		}
@@ -190,7 +189,7 @@ public class DefaultNetwork extends Manager<Network>
 			catch(Exception e)
 			{
 				Manager.of(Logger.class).info(Network.class, e);
-				try { c.close(); } catch(Exception ex) { };
+				try { c.close(); } catch(Exception ex) { /* ignore */ };
 			}
 		}
 		
@@ -246,7 +245,7 @@ public class DefaultNetwork extends Manager<Network>
 						
 						if( readCount == -1 )
 						{
-							try { c.close(); } catch(Exception ex) { };
+							try { c.close(); } catch(Exception ex) { /* ignore */ };
 						}
 					}
 					while(full);
@@ -270,7 +269,7 @@ public class DefaultNetwork extends Manager<Network>
 				{
 					if( key.attachment() instanceof Closeable )
 					{
-						try { ((Closeable)key.attachment()).close(); } catch(Exception ex) { };
+						try { ((Closeable)key.attachment()).close(); } catch(Exception ex) { /* ignore */ };
 					}
 					key.attach(null);
 					key.cancel();
@@ -289,7 +288,7 @@ public class DefaultNetwork extends Manager<Network>
 				}
 				else throw new IllegalStateException("Invalid selection key operation");
 			}
-			catch(Throwable t)
+			catch(Exception t)
 			{
 				if( key == null ) return;
 				
@@ -297,12 +296,12 @@ public class DefaultNetwork extends Manager<Network>
 				Manager.of(Logger.class).finer(Network.class, t);
 				if( key.attachment() instanceof Closeable )
 				{
-					try { ((Closeable)key.attachment()).close(); } catch(Exception ex) { };
+					try { ((Closeable)key.attachment()).close(); } catch(Exception ex) { /* ignore */ };
 				}
 				key.attach(null);
 				key.cancel();
 			}
-		};
+		}
 		
 		// =========================================
 		//
@@ -328,26 +327,28 @@ public class DefaultNetwork extends Manager<Network>
 			}
 			finally
 			{
-				if( selector == null ) return;
-				
-				try
+				if( selector != null )
 				{
-					for( SelectionKey k : selector.keys() )
+					try
 					{
-						k.cancel();
-						try { k.channel().close(); } catch(Exception e) { }
+						for( SelectionKey k : selector.keys() )
+						{
+							k.cancel();
+							try { k.channel().close(); } catch(Exception e) { /* ignore */ }
+						}
 					}
+					catch(Exception e) { /* ignore */ }
+					
+					try { selector.close(); } catch(Exception e) { /* ignore */ }
 				}
-				catch(Exception e) { }
-				
-				try { selector.close(); } catch(Exception e) { }
 			}
 		});
 	}
 	
 	protected Class<? extends DefaultNetwork.Implementation> defaultTarget() { return DefaultNetwork.Implementation.class; }
 	protected Supplier<? extends DefaultNetwork.Implementation> defaultCreator() { return DefaultNetwork.Implementation::new; }
-	
+
+	@Override
 	public Template<? extends Network> template()
 	{
 		return super.template()
@@ -428,7 +429,7 @@ public class DefaultNetwork extends Manager<Network>
 				}
 				catch(IOException e)
 				{
-					try { close(); } catch(Exception ioe) { }
+					try { close(); } catch(Exception ioe) { /* ignore */ }
 					throw new RuntimeException(e);
 				}
 			//});
@@ -533,8 +534,8 @@ public class DefaultNetwork extends Manager<Network>
 		public SecureConnectionImplementation(Connection source, SecurityOptions options)
 		{
 			this.source = source; 
-			this.source.onClose().then(Callback.once((c) -> { this.onClose().trigger(this); }));
-			this.source.onReady().then((c) -> { this.read(); });
+			this.source.onClose().then(Callback.once((c) -> this.onClose().trigger(this)));
+			this.source.onReady().then((c) -> this.read());
 			
 			ssl = Network.sslEngine(options, source.isClientMode());
 			if( source.isClientMode() ) handshake(null);
@@ -646,7 +647,7 @@ public class DefaultNetwork extends Manager<Network>
 				catch(Exception e)
 				{
 					Manager.of(Logger.class).fine(Network.class, e);
-					try { close(); } catch(Exception x) { }
+					try { close(); } catch(Exception x) { /* ignore */ }
 				}
 				finally
 				{
@@ -887,7 +888,7 @@ public class DefaultNetwork extends Manager<Network>
 			private long max = 60_000_000; // 1min
 			public long delay()
 			{
-				if( pool.size() == 0 ) return max;
+				if( pool.isEmpty() ) return max;
 				
 				// by design, the last element of the queue is the oldest
 				Iterator<TLS_Buffer> i = pool.descendingIterator();

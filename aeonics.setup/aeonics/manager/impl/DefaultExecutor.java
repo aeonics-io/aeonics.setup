@@ -3,7 +3,6 @@ package aeonics.manager.impl;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.function.Supplier;
 
 import aeonics.manager.Executor;
@@ -15,56 +14,44 @@ public class DefaultExecutor extends Manager<Executor>
 {
 	private static class Implementation extends Executor
 	{
-		private UncaughtExceptionHandler fatal = new UncaughtExceptionHandler()
+		private UncaughtExceptionHandler fatal = (t, e) ->
 		{
-			public void uncaughtException(Thread t, Throwable e)
-			{
-				try { Manager.of(Logger.class).severe(t.getName(), e); }
-				catch(Throwable x) { e.printStackTrace(); x.printStackTrace(); }
-			}
+			try { Manager.of(Logger.class).severe(t.getName(), e); }
+			catch(Throwable x) { e.printStackTrace(); x.printStackTrace(); }
 		};
 				
-		private ExecutorService priority = Executors.newSingleThreadExecutor(new ThreadFactory()
+		private ExecutorService priority = Executors.newSingleThreadExecutor((r) ->
 		{
-			public Thread newThread(Runnable r)
-			{
-				Thread t = new Thread(r);
-				t.setUncaughtExceptionHandler(fatal);
-				t.setDaemon(false);
-				t.setPriority(Thread.MAX_PRIORITY);
-				t.setName("Priority");
-				return t;
-			}
+			Thread t = new Thread(r);
+			t.setUncaughtExceptionHandler(fatal);
+			t.setDaemon(false);
+			t.setPriority(Thread.MAX_PRIORITY);
+			t.setName("Priority");
+			return t;
 		});
 		
 		public <T> Task<T> priority(Supplier<T> task) { return Task.sync(task, priority); }
 
-		private ExecutorService normal = Executors.newFixedThreadPool(Double.valueOf(Math.ceil(Runtime.getRuntime().availableProcessors()*1.0)).intValue(), new ThreadFactory()
+		private ExecutorService normal = Executors.newFixedThreadPool((int) Math.ceil(Runtime.getRuntime().availableProcessors()*1.0), (r) ->
 		{
-			public Thread newThread(Runnable r)
-			{
-				Thread t = new Thread(r);
-				t.setUncaughtExceptionHandler(fatal);
-				t.setDaemon(false);
-				t.setPriority(Thread.NORM_PRIORITY);
-				t.setName("Normal");
-				return t;
-			}
+			Thread t = new Thread(r);
+			t.setUncaughtExceptionHandler(fatal);
+			t.setDaemon(false);
+			t.setPriority(Thread.NORM_PRIORITY);
+			t.setName("Normal");
+			return t;
 		});
 
 		public <T> Task<T> normal(Supplier<T> task) { return Task.async(task, normal); }
 
-		private ExecutorService background = Executors.newCachedThreadPool(new ThreadFactory()
+		private ExecutorService background = Executors.newCachedThreadPool((r) ->
 		{
-			public Thread newThread(Runnable r)
-			{
-				Thread t = new Thread(r);
-				t.setUncaughtExceptionHandler(fatal);
-				t.setDaemon(true);
-				t.setPriority(Thread.MIN_PRIORITY);
-				t.setName("Background");
-				return t;
-			}
+			Thread t = new Thread(r);
+			t.setUncaughtExceptionHandler(fatal);
+			t.setDaemon(true);
+			t.setPriority(Thread.MIN_PRIORITY);
+			t.setName("Background");
+			return t;
 		});
 		
 		public <T> Task<T> background(Supplier<T> task) { return Task.sync(task, background); }
@@ -74,7 +61,8 @@ public class DefaultExecutor extends Manager<Executor>
 	
 	protected Class<? extends DefaultExecutor.Implementation> defaultTarget() { return DefaultExecutor.Implementation.class; }
 	protected Supplier<? extends DefaultExecutor.Implementation> defaultCreator() { return DefaultExecutor.Implementation::new; }
-	
+
+	@Override
 	public Template<? extends Executor> template()
 	{
 		return super.template()

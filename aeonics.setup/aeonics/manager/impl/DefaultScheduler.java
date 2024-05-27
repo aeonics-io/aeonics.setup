@@ -32,7 +32,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 			
 			if( time.isBefore(now) )
 			{
-				Manager.of(Executor.class).priority(() -> { task.accept(now); });
+				Manager.of(Executor.class).priority(() -> task.accept(now));
 				return;
 			}
 			else
@@ -46,7 +46,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 		{
 			synchronized(locker)
 			{
-				locker.notify();
+				locker.notifyAll();
 			}
 		}
 		
@@ -76,7 +76,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 						
 						if( future.isBefore(now) )
 						{
-							Manager.of(Executor.class).normal(() -> { c.accept(now); });
+							Manager.of(Executor.class).normal(() -> c.accept(now));
 							future = c.next(true);
 						}
 						
@@ -90,7 +90,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 						Tuple<ZonedDateTime, Consumer<ZonedDateTime>> t = i.next();
 						if( t.a.isBefore(now) )
 						{
-							Manager.of(Executor.class).normal(() -> { t.b.accept(now); });
+							Manager.of(Executor.class).normal(() -> t.b.accept(now));
 							i.remove();
 							continue;
 						}
@@ -128,21 +128,12 @@ public class DefaultScheduler extends Manager<Scheduler>
 					catch(InterruptedException e) { return; }
 				}
 			});
-		
-		/*new Origin.Background()
-		{
-			{
-				// initializer block
-				initialize(category(), "", null, true);
-			}
-			
-			
-		};*/
 	}
 	
 	protected Class<? extends DefaultScheduler.Implementation> defaultTarget() { return DefaultScheduler.Implementation.class; }
 	protected Supplier<? extends DefaultScheduler.Implementation> defaultCreator() { return DefaultScheduler.Implementation::new; }
-	
+
+	@Override
 	public Template<? extends Scheduler> template()
 	{
 		return super.template()
