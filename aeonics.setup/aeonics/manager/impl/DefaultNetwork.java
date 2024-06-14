@@ -538,80 +538,77 @@ public class DefaultNetwork extends Manager<Network>
 			this.source.onReady().then((c) -> this.read());
 			
 			ssl = Network.sslEngine(options, source.isClientMode());
-			if( source.isClientMode() ) handshake(null);
+			if( source.isClientMode() )
+			{
+				try { handshake(null); }
+				catch(Exception e) { throw new RuntimeException(e); }
+			}
 		}
 		
-		private void handshake(ByteBuffer read)
+		private void handshake(ByteBuffer read) throws Exception
 		{
-			try
+			SSLEngineResult status = null;
+			
+			handshakeloop: while( true )
 			{
-				SSLEngineResult status = null;
-				
-				handshakeloop: while( true )
+				HandshakeStatus step = (status == null ? ssl.getHandshakeStatus() : status.getHandshakeStatus());
+				switch( step )
 				{
-					HandshakeStatus step = (status == null ? ssl.getHandshakeStatus() : status.getHandshakeStatus());
-					switch( step )
+					case NOT_HANDSHAKING:
 					{
-						case NOT_HANDSHAKING:
+						if( read != null && status == null ) // this is the first CLIENT_HELLO packet
 						{
-							if( read != null && status == null ) // this is the first CLIENT_HELLO packet
-							{
-								status = ssl.unwrap(read, EMPTY);
-								break;
-							}
-							// else continue to FINISHED
-						}
-						case FINISHED:
-						{
-							if( !ssl.getSession().isValid() || ssl.getSession().getId().length == 0 )
-								throw new SSLHandshakeException("Handshake failed");
-							
-							// prevent rejoin session because it keeps a cache for almost never used rejoin
-							ssl.getSession().invalidate();
-							handshaking.set(false);
-
-							if( read != null && read.hasRemaining() )
-							{
-								if( reading.get() )
-									read3(); // continue with remaining buffer
-								else
-									read(); // re-acquire read lock
-							}
-							return;
-						}
-						case NEED_TASK:
-						{
-							Runnable task;
-							while((task = ssl.getDelegatedTask()) != null )
-								task.run();
-							status = null;
+							status = ssl.unwrap(read, EMPTY);
 							break;
 						}
-						case NEED_WRAP:
-						{
-							try( TLS_Buffer encrypted = TLS_BufferPool.poll() )
-							{
-								status = ssl.wrap(EMPTY, encrypted.get());
-								source.write(encrypted.get().flip());
-							}
-							break;
-						}
-						case NEED_UNWRAP:
-						case NEED_UNWRAP_AGAIN:
-						{
-							if( read == null || !read.hasRemaining() )
-								break handshakeloop;
-							else
-								status = ssl.unwrap(read, EMPTY);
-							break;
-						}
-						default: throw new SSLHandshakeException("Unsupported handshake status: " + ssl.getHandshakeStatus());
+						// else continue to FINISHED
 					}
+					case FINISHED:
+					{
+						if( !ssl.getSession().isValid() || ssl.getSession().getId().length == 0 )
+							throw new SSLHandshakeException("Handshake failed");
+						
+						// prevent rejoin session because it keeps a cache for almost never used rejoin
+						ssl.getSession().invalidate();
+						handshaking.set(false);
+
+						if( read != null && read.hasRemaining() )
+						{
+							if( reading.get() )
+								read3(); // continue with remaining buffer
+							else
+								read(); // re-acquire read lock
+						}
+						return;
+					}
+					case NEED_TASK:
+					{
+						Runnable task;
+						while((task = ssl.getDelegatedTask()) != null )
+							task.run();
+						status = null;
+						break;
+					}
+					case NEED_WRAP:
+					{
+						try( TLS_Buffer encrypted = TLS_BufferPool.poll() )
+						{
+							status = ssl.wrap(EMPTY, encrypted.get());
+							source.write(encrypted.get().flip());
+						}
+						break;
+					}
+					case NEED_UNWRAP:
+					case NEED_UNWRAP_AGAIN:
+					{
+						if( read == null || !read.hasRemaining() )
+							break handshakeloop;
+						else
+							status = ssl.unwrap(read, EMPTY);
+						break;
+					}
+					default: throw new SSLHandshakeException("Unsupported handshake status: " + ssl.getHandshakeStatus());
 				}
-			}
-			catch(Exception e)
-			{
-				throw new RuntimeException(e);
 			}
 		}
 
@@ -643,6 +640,11 @@ public class DefaultNetwork extends Manager<Network>
 				try
 				{
 					read2();
+				}
+				catch(SSLHandshakeException e)
+				{
+					Manager.of(Logger.class).finest(Network.class, "Handshake failed. {}", e.getMessage());
+					try { close(); } catch(Exception x) { /* ignore */ }
 				}
 				catch(Exception e)
 				{
