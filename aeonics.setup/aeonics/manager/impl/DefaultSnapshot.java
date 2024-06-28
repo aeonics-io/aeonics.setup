@@ -188,6 +188,8 @@ public class DefaultSnapshot extends Manager<Snapshot>
 			.config(Snapshot.class, new Parameter("path")
 				.summary("Snapshot folder path")
 				.description("The path to the snapshot folder")
+				.format(Parameter.Format.TEXT)
+				.optional(true)
 				.defaultValue(Data.of("shapshots")));
 	}
 }

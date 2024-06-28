@@ -25,15 +25,6 @@ public class Main extends Plugin
 {
 	// TODO : snapshot boot + snapshot/restore registry
 	
-	public Main()
-	{
-		// this is the only exception allowed in the plugin constructor
-		// because we need to set the lifecycle manager before the start() 
-		// method is called on any (other/this) plugin
-		
-		manager(Lifecycle.class, DefaultLifecycle.class, true);
-	}
-	
 	public String summary() { return "Default System"; }
 	public String description() { return "Initializes the default managers, security settings, sets the default factory for built-in types and loads the initial snapshot if necessary."; }
 	
@@ -62,6 +53,13 @@ public class Main extends Plugin
 	
 	public void start()
 	{
+		if( Manager.of(Lifecycle.class) == Lifecycle.NOOP )
+		{
+			Lifecycle instance = new DefaultLifecycle().template().build();
+			instance.name("Lifecycle Manager");
+			Registry.add(Manager.replace(Lifecycle.class, instance));
+		}
+		
 		Manager.of(Lifecycle.class).before(Phase.LOAD, Callback.once(() -> beforeLoad()));
 		Manager.of(Lifecycle.class).on(Phase.LOAD, Callback.once(() -> onLoad()));
 		Manager.of(Lifecycle.class).after(Phase.LOAD, Callback.once(() -> afterLoad()));
@@ -118,19 +116,26 @@ public class Main extends Plugin
 	
 	private void beforeConfig()
 	{
-		manager(Executor.class, DefaultExecutor.class, false);
+		if( Manager.of(Executor.class) == Executor.SYNCHRONOUS )
+		{
+			Executor instance = new DefaultExecutor().template().build();
+			instance.name("Executor Manager");
+			Registry.add(Manager.replace(Executor.class, instance));
+		}
+		
 		manager(Snapshot.class, DefaultSnapshot.class, false);
 		manager(Vault.class, DefaultVault.class, false);
+		manager(Monitor.class, DefaultMonitor.class, false);
 	}
 	
 	private void onConfig()
 	{
 		/* nothing to do */
+		Manager.of(Config.class).set(Monitor.class, "enabled", Data.of(true));
 	}
 	
 	private void afterConfig()
 	{
-		manager(Monitor.class, DefaultMonitor.class, false);
 		manager(Scheduler.class, DefaultScheduler.class, false);
 		manager(Timeout.class, DefaultTimeout.class, false);
 		manager(Network.class, DefaultNetwork.class, false);

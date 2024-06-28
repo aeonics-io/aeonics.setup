@@ -41,26 +41,20 @@ public class DefaultMonitor extends Manager<Monitor>
 			Objects.requireNonNull(level4);
 			
 			Data main = getOrReset();
-			Data lvl1 = getOrCreate(main, level1);
-			Data lvl2 = getOrCreate(lvl1, level2);
-			Data lvl3 = getOrCreate(lvl2, level3);
-			Data lvl4 = getOrCreate(lvl3, level4);
+			Data lvl1 = getOrCreate(main, level1, false);
+			Data lvl2 = getOrCreate(lvl1, level2, false);
+			Data lvl3 = getOrCreate(lvl2, level3, false);
+			Data lvl4 = getOrCreate(lvl3, level4, true);
 			
-			((LongAdder)lvl1.get(COUNT).get()).increment();
-			((LongAdder)lvl2.get(COUNT).get()).increment();
-			((LongAdder)lvl3.get(COUNT).get()).increment();
 			((LongAdder)lvl4.get(COUNT).get()).increment();
 			
 			if( value != 0 )
 			{
-				((LongAdder)lvl1.get(TOTAL).get()).add(value);
-				((LongAdder)lvl2.get(TOTAL).get()).add(value);
-				((LongAdder)lvl3.get(TOTAL).get()).add(value);
 				((LongAdder)lvl4.get(TOTAL).get()).add(value);
 			}
 		}
 		
-		private Data getOrCreate(Data data, String key)
+		private Data getOrCreate(Data data, String key, boolean includeCountAndTotal)
 		{
 			Data value = data.get(key);
 			if( !value.isMap() )
@@ -70,9 +64,8 @@ public class DefaultMonitor extends Manager<Monitor>
 					value = data.get(key);
 					if( !value.isMap() )
 					{
-						value = Data.map()
-							.put(COUNT, new LongAdder())
-							.put(TOTAL, new LongAdder());
+						value = Data.map();
+						if( includeCountAndTotal ) value.put(COUNT, new LongAdder()).put(TOTAL, new LongAdder());
 						data.put(key, value);
 					}
 				}
@@ -105,7 +98,7 @@ public class DefaultMonitor extends Manager<Monitor>
 			Data filtered = Data.map();
 			for( Map.Entry<String, Data> l1 : main.entrySet() )
 			{
-				if( l1.getKey().equals(COUNT) || l1.getKey().equals(TOTAL) || l1.getKey().equals(FROM) || l1.getKey().equals(TO) )
+				if( l1.getKey().equals(FROM) || l1.getKey().equals(TO) )
 				{
 					filtered.put(l1.getKey(), l1.getValue());
 					continue;
@@ -116,23 +109,11 @@ public class DefaultMonitor extends Manager<Monitor>
 					Data _l2 = Data.map();
 					for( Map.Entry<String, Data> l2 : l1.getValue().entrySet() )
 					{
-						if( l2.getKey().equals(COUNT) || l2.getKey().equals(TOTAL) )
-						{
-							_l2.put(l2.getKey(), l2.getValue());
-							continue;
-						}
-						
 						if( level2 == null || level2.equals(l2.getKey()) && l2.getValue().isMap() )
 						{
 							Data _l3 = Data.map();
 							for( Map.Entry<String, Data> l3 : l2.getValue().entrySet() )
 							{
-								if( l3.getKey().equals(COUNT) || l3.getKey().equals(TOTAL) )
-								{
-									_l3.put(l3.getKey(), l3.getValue());
-									continue;
-								}
-								
 								if( level3 == null || level3.equals(l3.getKey()) && l3.getValue().isMap() )
 								{
 									Data _l4 = Data.map();
@@ -198,6 +179,8 @@ public class DefaultMonitor extends Manager<Monitor>
 				catch(Exception e) { Manager.of(Logger.class).severe(Monitor.class, "Could not set monitor enabled state to {}. Current value {} is unchanged.", value, enabled); }
 			}
 		}
+
+		
 	}
 	
 	protected Class<? extends DefaultMonitor.Implementation> defaultTarget() { return DefaultMonitor.Implementation.class; }
@@ -213,10 +196,17 @@ public class DefaultMonitor extends Manager<Monitor>
 			.config(Monitor.class, new Parameter("window")
 				.summary("Time window")
 				.description("The amount of time in milliseconds to keep track of metrics and then reset to 0. If this value is modified, the window will be applied after the end of the current window.")
+				.rule(Parameter.Rule.DIGIT)
+				.format(Parameter.Format.NUMBER)
+				.optional(true)
 				.defaultValue(Data.of(60_000)))
 			.config(Monitor.class, new Parameter("enabled")
 				.summary("Enable monitoring")
 				.description("Whether or not the monitoring should be enabled. If set to false, then all monitoring requests are ignored.")
-				.defaultValue(Data.of(false)));
+				.rule(Parameter.Rule.BOOLEAN)
+				.format(Parameter.Format.BOOLEAN)
+				.optional(true)
+				.defaultValue(Data.of(false)))
+			;
 	}
 }

@@ -137,10 +137,16 @@ public class DefaultTranslator extends Manager<Translator>
 			.add(new Parameter("default")
 				.summary("Default language")
 				.description("The default language of the translator. It should be a ISO-639 (2 letter) language code.")
+				.format(Parameter.Format.TEXT)
+				.optional(true)
+				.min(2).max(2)
+				.rule(Parameter.Rule.LOWER)
 				.defaultValue(Data.of("en")))
 			.add(new Parameter("folder")
 				.summary("Resource folder")
 				.description("The name of the folder from which translations can be loaded. That folder should contain one subfolder per language.")
+				.format(Parameter.Format.TEXT)
+				.optional(true)
 				.defaultValue(Data.of("translations")))
 			.builder((data, instance) ->
 			{

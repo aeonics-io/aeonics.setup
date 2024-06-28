@@ -1,11 +1,5 @@
 package aeonics.manager.impl;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
@@ -16,7 +10,6 @@ import aeonics.manager.Lifecycle;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.template.Template;
-import aeonics.util.Callback.Once;
 
 public class DefaultLifecycle extends Manager<Lifecycle>
 {
@@ -64,68 +57,19 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 			long start = System.currentTimeMillis();
 			Manager.of(Logger.class).finer(Lifecycle.class, "Phase " + phase + " initiated");
 	
-			List<Once<Void>> b = before.get(phase);
-			if( b == null ) b = Collections.emptyList();
-			List<Once<Void>> o = on.get(phase);
-			if( o == null ) o = Collections.emptyList();
-			List<Once<Void>> a = after.get(phase);
-			if( a == null ) a = Collections.emptyList();
-			
-			for( List<Once<Void>> step : List.of(b, o, a) )
+			try
 			{
-				Iterator<Once<Void>> i = step.iterator();
-				Once<Void> h = null;
+				before(phase).trigger(null).await();
+				on(phase).trigger(null).await();
+				after(phase).trigger(null).await();
 				
-				while( i.hasNext() )
-				{
-					try
-					{
-						h = i.next();
-						i.remove();
-						
-						h.accept(null);
-					}
-					catch(Throwable e)
-					{
-						Manager.of(Logger.class).warning(Lifecycle.class, e);
-					}
-				}
+				long end = System.currentTimeMillis();
+				Manager.of(Logger.class).fine(Lifecycle.class, "Phase " + phase + " completed in " + (end-start) + "ms");
 			}
-
-			long end = System.currentTimeMillis();
-			Manager.of(Logger.class).fine(Lifecycle.class, "Phase " + phase + " completed in " + (end-start) + "ms");
-		}
-		
-		Map<Phase, List<Once<Void>>> before = new ConcurrentHashMap<>();
-		public void before(Phase phase, Once<Void> handler) 
-		{
-			synchronized(phase)
+			catch(Exception e)
 			{
-				if( !before.containsKey(phase) )
-					before.put(phase, new ArrayList<>());
-				before.get(phase).add(handler);
-			}
-		}
-
-		Map<Phase, ArrayList<Once<Void>>> on = new ConcurrentHashMap<>();
-		public void on(Phase phase, Once<Void> handler) 
-		{
-			synchronized(phase)
-			{
-				if( !on.containsKey(phase) )
-					on.put(phase, new ArrayList<>());
-				on.get(phase).add(handler);
-			}
-		}
-
-		Map<Phase, ArrayList<Once<Void>>> after = new ConcurrentHashMap<>();
-		public void after(Phase phase, Once<Void> handler)
-		{
-			synchronized(phase)
-			{
-				if( !after.containsKey(phase) )
-					after.put(phase, new ArrayList<>());
-				after.get(phase).add(handler);
+				Manager.of(Logger.class).severe(Lifecycle.class, "Phase " + phase + " failed unexpectedly");
+				Manager.of(Logger.class).fine(Lifecycle.class, e);
 			}
 		}
 	}

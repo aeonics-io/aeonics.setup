@@ -37,6 +37,16 @@ public class DefaultConfig extends Manager<Config>
 				else value.b.b = parameter;
 			}
 		}
+		
+		public Parameter definition(String type, String parameter)
+		{
+			if( type == null || type.isBlank() || parameter == null || parameter.isBlank() ) return null;
+					
+			String key = implodeName(type, parameter);
+			Tuple<Data, Tuple<Callback<Tuple<String, Data>>, Parameter>> value = store.get(key);
+			if( value == null ) return null;
+			return value.b.b;
+		}
 
 		public Data get(String type, String name)
 		{

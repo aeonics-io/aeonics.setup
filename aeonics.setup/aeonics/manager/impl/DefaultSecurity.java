@@ -432,6 +432,8 @@ public class DefaultSecurity extends Manager<Security>
 			.config(Security.class, new Parameter("token.storage")
 				.summary("Token storage")
 				.description("The name or id of the storage for access tokens. If the storage does not exist, a local temporary (ouf-of-storage) location is used instead.")
+				.format(Parameter.Format.TEXT)
+				.optional(true)
 				.defaultValue(Data.empty()))
 			.builder((data, instance) ->
 			{

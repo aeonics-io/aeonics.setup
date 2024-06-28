@@ -358,6 +358,9 @@ public class DefaultNetwork extends Manager<Network>
 			.config(Network.class, new Parameter("timeout")
 				.summary("Default network idle timeout")
 				.description("This configuration parameter defines the priod of time in milliseconds after which an idle network connection is considered inactive ans should be forcibly closed.")
+				.rule(Parameter.Rule.DIGIT)
+				.format(Parameter.Format.NUMBER)
+				.optional(true)
 				.defaultValue(Data.of(120000)));
 	}
 	
