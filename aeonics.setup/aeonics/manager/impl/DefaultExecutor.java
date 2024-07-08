@@ -1,10 +1,16 @@
 package aeonics.manager.impl;
 
 import java.lang.Thread.UncaughtExceptionHandler;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
+import aeonics.data.Data;
 import aeonics.manager.Executor;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
@@ -14,49 +20,101 @@ public class DefaultExecutor extends Manager<Executor>
 {
 	private static class Implementation extends Executor
 	{
-		private UncaughtExceptionHandler fatal = (t, e) ->
+		private static ThreadGroup group = new ThreadGroup("aeonics");
+		private static ThreadGroup priority_group = new ThreadGroup(group, "priority");
+		private static ThreadGroup normal_group = new ThreadGroup(group, "normal");
+		private static ThreadGroup background_group = new ThreadGroup(group, "background");
+		
+		private static UncaughtExceptionHandler fatal = (t, e) ->
 		{
 			try { Manager.of(Logger.class).severe(t.getName(), e); }
 			catch(Throwable x) { e.printStackTrace(); x.printStackTrace(); }
 		};
 				
-		private ExecutorService priority = Executors.newSingleThreadExecutor((r) ->
-		{
-			Thread t = new Thread(r);
-			t.setUncaughtExceptionHandler(fatal);
-			t.setDaemon(false);
-			t.setPriority(Thread.MAX_PRIORITY);
-			t.setName("Priority");
-			return t;
-		});
-		
+		private MonitoredThreadPool priority = MonitoredThreadPool.single();
 		public <T> Task<T> priority(Supplier<T> task) { return Task.sync(task, priority); }
 
-		private ExecutorService normal = Executors.newFixedThreadPool((int) Math.ceil(Runtime.getRuntime().availableProcessors()*1.0), (r) ->
-		{
-			Thread t = new Thread(r);
-			t.setUncaughtExceptionHandler(fatal);
-			t.setDaemon(false);
-			t.setPriority(Thread.NORM_PRIORITY);
-			t.setName("Normal");
-			return t;
-		});
-
+		private MonitoredThreadPool normal = MonitoredThreadPool.fixed((int) Math.ceil(Runtime.getRuntime().availableProcessors()*1.0));
 		public <T> Task<T> normal(Supplier<T> task) { return Task.async(task, normal); }
 
-		private ExecutorService background = Executors.newCachedThreadPool((r) ->
-		{
-			Thread t = new Thread(r);
-			t.setUncaughtExceptionHandler(fatal);
-			t.setDaemon(true);
-			t.setPriority(Thread.MIN_PRIORITY);
-			t.setName("Background");
-			return t;
-		});
-		
+		private MonitoredThreadPool background = MonitoredThreadPool.cached();
 		public <T> Task<T> background(Supplier<T> task) { return Task.sync(task, background); }
 		
 		public <T> Task<T> io(Supplier<T> task) { return normal(task); }
+		
+		@Override
+		public Data export()
+		{
+			return super.export()
+				.put("normal", normal.metrics())
+				.put("priority", priority.metrics())
+				.put("background", background.metrics())
+			;
+		}
+		
+		private static class MonitoredThreadPool extends ThreadPoolExecutor
+		{
+			private LongAdder submitted = new LongAdder();
+			
+			public static MonitoredThreadPool single()
+			{
+				return new MonitoredThreadPool(1, 1, 0L, new LinkedBlockingQueue<Runnable>(), (r) ->
+				{
+					Thread t = new Thread(priority_group, r);
+					t.setUncaughtExceptionHandler(fatal);
+					t.setDaemon(false);
+					t.setPriority(Thread.MAX_PRIORITY);
+					t.setName("Priority");
+					return t;
+				});
+			}
+			
+			public static MonitoredThreadPool fixed(int n)
+			{
+				return new MonitoredThreadPool(n, n, 0L, new LinkedBlockingQueue<Runnable>(), (r) ->
+				{
+					Thread t = new Thread(normal_group, r);
+					t.setUncaughtExceptionHandler(fatal);
+					t.setDaemon(false);
+					t.setPriority(Thread.NORM_PRIORITY);
+					t.setName("Normal");
+					return t;
+				});
+			}
+			
+			public static MonitoredThreadPool cached()
+			{
+				return new MonitoredThreadPool(0, Integer.MAX_VALUE, 60000L, new SynchronousQueue<Runnable>(), (r) ->
+				{
+					Thread t = new Thread(background_group, r);
+					t.setUncaughtExceptionHandler(fatal);
+					t.setDaemon(true);
+					t.setPriority(Thread.MIN_PRIORITY);
+					t.setName("Background");
+					return t;
+				});
+			}
+			
+			public MonitoredThreadPool(int min, int max, long timeout, BlockingQueue<Runnable> queue, ThreadFactory factory)
+			{
+				super(min, max, timeout, TimeUnit.MILLISECONDS, queue, factory);
+				this.afterExecute(null, null);
+			}
+			
+			@Override
+			public void execute(Runnable command)
+			{
+				submitted.increment();
+				super.execute(command);
+			}
+			
+			public Data metrics()
+			{
+				return Data.map()
+					.put("submitted", submitted.longValue())
+					.put("pending", getQueue().size());
+			}
+		}
 	}
 	
 	protected Class<? extends DefaultExecutor.Implementation> defaultTarget() { return DefaultExecutor.Implementation.class; }
