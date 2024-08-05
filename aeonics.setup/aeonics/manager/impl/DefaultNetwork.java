@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 
@@ -31,6 +32,7 @@ import aeonics.manager.Executor;
 import aeonics.manager.Executor.Task;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
+import aeonics.manager.Monitor;
 import aeonics.manager.Network;
 import aeonics.manager.Timeout;
 import aeonics.manager.Timeout.Tracker;
@@ -44,6 +46,10 @@ import aeonics.util.Hardware;
 
 public class DefaultNetwork extends Manager<Network>
 {
+	private static final LongAdder bytesRead = new LongAdder();
+	private static final LongAdder bytesWritten = new LongAdder();
+	private static final LongAdder connectionsEstablished = new LongAdder();
+	
 	private static class Implementation extends Network implements Closeable
 	{
 		// =========================================
@@ -129,8 +135,8 @@ public class DefaultNetwork extends Manager<Network>
 		// =========================================
 		
 		private Selector selector;
-		private static final int BUFFER_SIZE = 1024*64; // default TCP packet size
-		private ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
+		//XX private static final int BUFFER_SIZE = 1024*64; // default TCP packet size
+		//XX private ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
 		
 		private void onAcceptable(SelectionKey key) throws Exception
 		{
@@ -143,6 +149,7 @@ public class DefaultNetwork extends Manager<Network>
 			{
 				SocketChannel client = channel.accept();
 				if( client == null ) break;
+				connectionsEstablished.increment();
 				client.configureBlocking(false);
 				
 				ConnectionImplementation unsecure = new ConnectionImplementation(client, false);
@@ -160,7 +167,7 @@ public class DefaultNetwork extends Manager<Network>
 			
 			key.interestOps(key.interestOps() & ~SelectionKey.OP_CONNECT);
 			ConnectionImplementation c = (ConnectionImplementation) key.attachment();
-			
+			connectionsEstablished.increment();
 			onConnectable2(c);
 		}
 		
@@ -213,8 +220,9 @@ public class DefaultNetwork extends Manager<Network>
 			//{
 				boolean ready = false;
 				boolean full = false;
-				synchronized(buffer)
+				try( TLS_Buffer bufferX = TLS_BufferPool.poll() ) //XX synchronized(buffer)
 				{
+					ByteBuffer buffer = bufferX.get();
 					do
 					{
 						int readCount = 0;
@@ -237,6 +245,7 @@ public class DefaultNetwork extends Manager<Network>
 							
 							byte[] data = new byte[buffer.limit()]; 
 							buffer.get(data);
+							bytesRead.add(data.length);
 							c.fifo.offer(data);
 							c.resetTimeout();
 							buffer.clear();
@@ -361,7 +370,18 @@ public class DefaultNetwork extends Manager<Network>
 				.rule(Parameter.Rule.DIGIT)
 				.format(Parameter.Format.NUMBER)
 				.optional(true)
-				.defaultValue(Data.of(120000)));
+				.defaultValue(Data.of(120000)))
+			.builder((data, instance) -> 
+			{
+				Monitor.add("network", () ->
+				{
+					return Data.map()
+						.put("read", bytesRead.longValue())
+						.put("write", bytesWritten.longValue())
+						.put("connect", connectionsEstablished.longValue())
+						;
+				});
+			});
 	}
 	
 	// =========================================
@@ -421,12 +441,17 @@ public class DefaultNetwork extends Manager<Network>
 					
 					synchronized(c)
 					{
+						int count = 0;
 						while( data.hasRemaining() )
 						{
-							if( c.write(data) == 0 )
+							count = c.write(data);
+							if( count == 0 )
 								LockSupport.parkNanos(1_000_000);
 							else
+							{
+								bytesWritten.add(count);
 								resetTimeout();
+							}
 						}
 					}
 				}
@@ -915,15 +940,17 @@ public class DefaultNetwork extends Manager<Network>
 	
 	private static class TLS_Buffer implements AutoCloseable, Supplier<ByteBuffer>
 	{
+		private static final int BUFFER_SIZE = 1024*64; // default TCP packet size
 		private long idle = System.currentTimeMillis();
 		private ByteBuffer buffer;
 		public TLS_Buffer()
 		{
-			Hardware.RAM.waitForSpace(50*1024, 1000);
+			Hardware.RAM.waitForSpace(BUFFER_SIZE, 1000);
 			
 			// RFC 2246 (section 6.2. 2) : max size of plain text data is 16KB
-			// when encrypted it can be higher, so we use 50KB to be sure
-			buffer = ByteBuffer.allocateDirect(50*1024);
+			// when encrypted it can be higher, so we use 64KB to be sure
+			//buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
+			buffer = ByteBuffer.allocate(BUFFER_SIZE);
 		}
 		
 		public ByteBuffer get() { return buffer; }

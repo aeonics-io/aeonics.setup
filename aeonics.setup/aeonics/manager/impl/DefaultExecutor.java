@@ -14,6 +14,7 @@ import aeonics.data.Data;
 import aeonics.manager.Executor;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
+import aeonics.manager.Monitor;
 import aeonics.template.Template;
 
 public class DefaultExecutor extends Manager<Executor>
@@ -42,25 +43,22 @@ public class DefaultExecutor extends Manager<Executor>
 		
 		public <T> Task<T> io(Supplier<T> task) { return normal(task); }
 		
-		@Override
-		public Data export()
+		private static class MonitoredThread extends Thread
 		{
-			return super.export()
-				.put("normal", normal.metrics())
-				.put("priority", priority.metrics())
-				.put("background", background.metrics())
-			;
+			private volatile long start = 0;
+			public MonitoredThread(ThreadGroup group, Runnable task) { super(group, task); }
 		}
 		
 		private static class MonitoredThreadPool extends ThreadPoolExecutor
 		{
-			private LongAdder submitted = new LongAdder();
+			private LongAdder errors = new LongAdder();
+			private LongAdder time = new LongAdder();
 			
 			public static MonitoredThreadPool single()
 			{
 				return new MonitoredThreadPool(1, 1, 0L, new LinkedBlockingQueue<Runnable>(), (r) ->
 				{
-					Thread t = new Thread(priority_group, r);
+					Thread t = new MonitoredThread(priority_group, r);
 					t.setUncaughtExceptionHandler(fatal);
 					t.setDaemon(false);
 					t.setPriority(Thread.MAX_PRIORITY);
@@ -73,7 +71,7 @@ public class DefaultExecutor extends Manager<Executor>
 			{
 				return new MonitoredThreadPool(n, n, 0L, new LinkedBlockingQueue<Runnable>(), (r) ->
 				{
-					Thread t = new Thread(normal_group, r);
+					Thread t = new MonitoredThread(normal_group, r);
 					t.setUncaughtExceptionHandler(fatal);
 					t.setDaemon(false);
 					t.setPriority(Thread.NORM_PRIORITY);
@@ -86,7 +84,7 @@ public class DefaultExecutor extends Manager<Executor>
 			{
 				return new MonitoredThreadPool(0, Integer.MAX_VALUE, 60000L, new SynchronousQueue<Runnable>(), (r) ->
 				{
-					Thread t = new Thread(background_group, r);
+					Thread t = new MonitoredThread(background_group, r);
 					t.setUncaughtExceptionHandler(fatal);
 					t.setDaemon(true);
 					t.setPriority(Thread.MIN_PRIORITY);
@@ -98,21 +96,30 @@ public class DefaultExecutor extends Manager<Executor>
 			public MonitoredThreadPool(int min, int max, long timeout, BlockingQueue<Runnable> queue, ThreadFactory factory)
 			{
 				super(min, max, timeout, TimeUnit.MILLISECONDS, queue, factory);
-				this.afterExecute(null, null);
 			}
 			
 			@Override
-			public void execute(Runnable command)
+			public void beforeExecute(Thread thread, Runnable task)
 			{
-				submitted.increment();
-				super.execute(command);
+				((MonitoredThread)thread).start = System.nanoTime();
+			}
+			
+			@Override
+			public void afterExecute(Runnable task, Throwable error)
+			{
+				if( error != null ) errors.increment();
+				time.add(System.nanoTime() - ((MonitoredThread)Thread.currentThread()).start);
 			}
 			
 			public Data metrics()
 			{
 				return Data.map()
-					.put("submitted", submitted.longValue())
-					.put("pending", getQueue().size());
+					.put("submitted", this.getTaskCount())
+					.put("completed", this.getCompletedTaskCount())
+					.put("errors", errors.longValue())
+					.put("time", time.longValue())
+					.put("pending", this.getQueue().size())
+					.put("size", this.getPoolSize());
 			}
 		}
 	}
@@ -125,6 +132,20 @@ public class DefaultExecutor extends Manager<Executor>
 	{
 		return super.template()
 			.summary("Default runtime")
-			.description("Manages the execution of all the tasks in the system. This manager treats I/O operations as normal tasks.");
+			.description("Manages the execution of all the tasks in the system. This manager treats I/O operations as normal tasks.")
+			.builder((data, instance) ->
+			{
+				if( !(instance instanceof Implementation) ) return;
+				Implementation i = (Implementation)instance;
+				
+				Monitor.add("tasks", () ->
+				{
+					return Data.map()
+						.put("normal", i.normal.metrics())
+						.put("priority", i.priority.metrics())
+						.put("background", i.background.metrics())
+						.put("io", Data.map().put("size", 0).put("submitted", 0).put("completed", 0).put("pending", 0).put("errors", 0).put("time", 0));
+				});
+			});
 	}
 }

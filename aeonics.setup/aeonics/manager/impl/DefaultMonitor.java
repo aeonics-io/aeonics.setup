@@ -12,6 +12,7 @@ import aeonics.manager.Manager;
 import aeonics.manager.Monitor;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
+import aeonics.util.Hardware;
 
 public class DefaultMonitor extends Manager<Monitor>
 {
@@ -147,11 +148,11 @@ public class DefaultMonitor extends Manager<Monitor>
 		private Data getOrReset()
 		{
 			long now = System.currentTimeMillis();
-			if( to < now )
+			if( to < now || current == null )
 			{
 				synchronized(this)
 				{
-					if( to < now )
+					if( to < now || current == null  )
 					{
 						from = now - (now % window);
 						to = from + window;
@@ -207,6 +208,10 @@ public class DefaultMonitor extends Manager<Monitor>
 				.format(Parameter.Format.BOOLEAN)
 				.optional(true)
 				.defaultValue(Data.of(false)))
+			.builder((data, instance) ->
+			{
+				Monitor.add("hardware", () -> { return Hardware.export(); });
+			})
 			;
 	}
 }
