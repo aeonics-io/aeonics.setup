@@ -138,7 +138,7 @@ public class DefaultExecutor extends Manager<Executor>
 				if( !(instance instanceof Implementation) ) return;
 				Implementation i = (Implementation)instance;
 				
-				Monitor.add("tasks", () ->
+				Monitor.addProbe("tasks", () ->
 				{
 					return Data.map()
 						.put("normal", i.normal.metrics())

@@ -12,11 +12,13 @@ import java.util.function.Supplier;
 import aeonics.entity.Origin;
 import aeonics.entity.Registry;
 import aeonics.manager.Executor;
+import aeonics.manager.Lifecycle;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Scheduler;
 import aeonics.template.Template;
-import aeonics.util.Tuple;
+import aeonics.util.Callback;
+import aeonics.util.Tuples.Tuple;
 
 public class DefaultScheduler extends Manager<Scheduler>
 {
@@ -50,15 +52,27 @@ public class DefaultScheduler extends Manager<Scheduler>
 			}
 		}
 		
-		public void close() { origin.stop(); Registry.of(Origin.class).remove(origin.id()); origin = null; }
+		public void close()
+		{
+			if( origin == null )
+				return;
+			
+			origin.stop(); 
+			Registry.of(Origin.class).remove(origin.id()); 
+			origin = null;
+		}
 		
-		Origin.Background origin = new Origin() { }
+		private Origin.Background origin()
+		{
+			return new Origin() { }
 			.target(Origin.Background.class)
 			.creator(Origin.Background::new)
 			.template()
 			.summary("Scheduler data origin")
 			.description("This data origin is used by the Scheduler to inject messages in the system.")
 			.build()
+			.internal(true)
+			.name("Scheduler")
 			.<Origin.Background>cast()
 			.run(() ->
 			{
@@ -128,6 +142,9 @@ public class DefaultScheduler extends Manager<Scheduler>
 					catch(InterruptedException e) { return; }
 				}
 			});
+		}
+		
+		private Origin.Background origin = null;
 	}
 	
 	protected Class<? extends DefaultScheduler.Implementation> defaultTarget() { return DefaultScheduler.Implementation.class; }
@@ -142,10 +159,17 @@ public class DefaultScheduler extends Manager<Scheduler>
 				+ "This allows a finer granularity in task scheduling without requiring constant checks.")
 			.builder((data, instance) -> 
 			{
-				if( instance instanceof DefaultScheduler.Implementation )
+				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN )
 				{
-					((DefaultScheduler.Implementation)instance).origin.name("Scheduler");
-					((DefaultScheduler.Implementation)instance).origin.start();
+					((Implementation)instance).origin = ((Implementation)instance).origin();
+					((Implementation)instance).origin.start();
+				}
+				else
+				{
+					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> {
+						((Implementation)instance).origin = ((Implementation)instance).origin();
+						((Implementation)instance).origin.start();
+					}));
 				}
 			});
 	}

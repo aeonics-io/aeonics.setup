@@ -14,7 +14,7 @@ import aeonics.template.Parameter;
 import aeonics.template.Template;
 import aeonics.util.Callback;
 import aeonics.util.StringUtils;
-import aeonics.util.Tuple;
+import aeonics.util.Tuples.Tuple;
 import aeonics.util.Functions.BiConsumer;
 
 public class DefaultConfig extends Manager<Config>
@@ -54,7 +54,7 @@ public class DefaultConfig extends Manager<Config>
 			
 			String key = implodeName(type, name);
 			Tuple<Data, Tuple<Callback<Tuple<String, Data>>, Parameter>> value = store.get(key);
-			if( value == null ) return null;
+			if( value == null ) return Data.empty();
 			return value.b.b.resolve(value.a, null);
 		}
 		
@@ -138,6 +138,24 @@ public class DefaultConfig extends Manager<Config>
 				return values;
 			}
 		}
+		
+		public Map<String, Map<String, Data>> all()
+		{
+			Map<String, Map<String, Data>> types = new HashMap<>();
+			
+			synchronized(store)
+			{
+				for( Map.Entry<String, Tuple<Data, Tuple<Callback<Tuple<String, Data>>, Parameter>>> entry : store.entrySet() )
+				{
+					Tuple<String, String> name = explodeName(entry.getKey());
+					types
+						.computeIfAbsent(name.a, (key) -> new HashMap<>())
+						.put(name.b, entry.getValue().a);
+				}
+			}
+			
+			return types;
+		}
 	}
 	
 	protected Class<? extends DefaultConfig.Implementation> defaultTarget() { return DefaultConfig.Implementation.class; }
@@ -150,7 +168,7 @@ public class DefaultConfig extends Manager<Config>
 			.summary("In memory configuration")
 			.description("Stores all the configuration parameters directly in memory. Environment variables and system properties are imported by default. "
 				+ "They will be split by '_' or '.' and converted to lower case: Entity_Type_NAME will be converted to the configuration parameter "
-				+ "entity type > name.")
+				+ "entity type > name. This means that the 'name' part must not contain '_' or '.' characters.")
 			.builder((data, instance) -> {
 				for( Map.Entry<String, String> entry : System.getenv().entrySet() )
 				{

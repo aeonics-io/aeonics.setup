@@ -29,6 +29,7 @@ import javax.net.ssl.SSLHandshakeException;
 import aeonics.data.Data;
 import aeonics.manager.Config;
 import aeonics.manager.Executor;
+import aeonics.manager.Lifecycle;
 import aeonics.manager.Executor.Task;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
@@ -135,8 +136,6 @@ public class DefaultNetwork extends Manager<Network>
 		// =========================================
 		
 		private Selector selector;
-		//XX private static final int BUFFER_SIZE = 1024*64; // default TCP packet size
-		//XX private ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
 		
 		private void onAcceptable(SelectionKey key) throws Exception
 		{
@@ -319,39 +318,43 @@ public class DefaultNetwork extends Manager<Network>
 		// =========================================
 		
 		private AtomicBoolean initialized = new AtomicBoolean(false);
-		private Task<Void> task = Manager.of(Executor.class).background(() ->
+		private Task<Void> task = null;
+		private Task<Void> task()
 		{
-			Thread.currentThread().setName(Thread.currentThread().getName() + " :: Network Manager");
-			try
+			return Manager.of(Executor.class).background(() ->
 			{
-				selector = Selector.open();
-				initialized.set(true);
-				
-				while( !Thread.currentThread().isInterrupted() )
-					selector.select(this::onSelect);
-			}
-			catch(Exception e)
-			{
-				Manager.of(Logger.class).severe(Network.class, e);
-			}
-			finally
-			{
-				if( selector != null )
+				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Network Manager");
+				try
 				{
-					try
-					{
-						for( SelectionKey k : selector.keys() )
-						{
-							k.cancel();
-							try { k.channel().close(); } catch(Exception e) { /* ignore */ }
-						}
-					}
-					catch(Exception e) { /* ignore */ }
+					selector = Selector.open();
+					initialized.set(true);
 					
-					try { selector.close(); } catch(Exception e) { /* ignore */ }
+					while( !Thread.currentThread().isInterrupted() )
+						selector.select(this::onSelect);
 				}
-			}
-		});
+				catch(Exception e)
+				{
+					Manager.of(Logger.class).severe(Network.class, e);
+				}
+				finally
+				{
+					if( selector != null )
+					{
+						try
+						{
+							for( SelectionKey k : selector.keys() )
+							{
+								k.cancel();
+								try { k.channel().close(); } catch(Exception e) { /* ignore */ }
+							}
+						}
+						catch(Exception e) { /* ignore */ }
+						
+						try { selector.close(); } catch(Exception e) { /* ignore */ }
+					}
+				}
+			});
+		}
 	}
 	
 	protected Class<? extends DefaultNetwork.Implementation> defaultTarget() { return DefaultNetwork.Implementation.class; }
@@ -373,7 +376,7 @@ public class DefaultNetwork extends Manager<Network>
 				.defaultValue(Data.of(120000)))
 			.builder((data, instance) -> 
 			{
-				Monitor.add("network", () ->
+				Monitor.addProbe("network", () ->
 				{
 					return Data.map()
 						.put("read", bytesRead.longValue())
@@ -381,6 +384,11 @@ public class DefaultNetwork extends Manager<Network>
 						.put("connect", connectionsEstablished.longValue())
 						;
 				});
+				
+				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN ) 
+					((Implementation)instance).task = ((Implementation)instance).task();
+				else 
+					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> { ((Implementation)instance).task = ((Implementation)instance).task(); }));
 			});
 	}
 	
@@ -400,6 +408,7 @@ public class DefaultNetwork extends Manager<Network>
 		{
 			this.channel.set(channel);
 			this.clientMode = clientMode;
+			this.setupTracker();
 		}
 		
 		public void close() throws IOException 
@@ -517,16 +526,19 @@ public class DefaultNetwork extends Manager<Network>
 		
 		private long ttl = Manager.of(Config.class).get(Network.class, "timeout").asLong();
 		
-		private Tracker<ConnectionImplementation> tracker = new Tracker<ConnectionImplementation>(this)
-		{
-			public long delay()
-			{
-				if( closed.get() ) return -1;
-				return Math.max(0, lastActivity + ttl - System.currentTimeMillis());
-			}
-		};
+		private Tracker<ConnectionImplementation> tracker = null;
 		
+		private void setupTracker()
 		{
+			tracker = new Tracker<ConnectionImplementation>(this)
+			{
+				public long delay()
+				{
+					if( closed.get() ) return -1;
+					return Math.max(0, lastActivity + ttl - System.currentTimeMillis());
+				}
+			};
+			
 			tracker.onExpire().then((c) ->
 			{
 				SocketChannel channel = c.channel();
@@ -546,6 +558,7 @@ public class DefaultNetwork extends Manager<Network>
 					/* noop */
 				}
 			});
+			
 			Manager.of(Timeout.class).watch(tracker);
 		}
 	}
@@ -949,7 +962,6 @@ public class DefaultNetwork extends Manager<Network>
 			
 			// RFC 2246 (section 6.2. 2) : max size of plain text data is 16KB
 			// when encrypted it can be higher, so we use 64KB to be sure
-			//buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
 			buffer = ByteBuffer.allocate(BUFFER_SIZE);
 		}
 		

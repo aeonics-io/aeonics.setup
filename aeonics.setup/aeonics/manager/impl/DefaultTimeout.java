@@ -11,7 +11,9 @@ import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Timeout;
 import aeonics.manager.Executor.Task;
+import aeonics.manager.Lifecycle;
 import aeonics.template.Template;
+import aeonics.util.Callback;
 
 public class DefaultTimeout extends Manager<Timeout>
 {
@@ -40,61 +42,66 @@ public class DefaultTimeout extends Manager<Timeout>
 			}
 		}
 		
-		public void close() { task.cancel(); }
+		public void close() { if( task != null ) task.cancel(); }
 		
-		private Task<Void> task = Manager.of(Executor.class).background(() -> 
+		private Task<Void> task()
 		{
-			Thread.currentThread().setName(Thread.currentThread().getName() + " :: Timeout Manager");
-			while(true)
+			return Manager.of(Executor.class).background(() -> 
 			{
-				long at = -1;
-				
-				Iterator<Tracker<?>> i = targets.iterator();
-				while( i.hasNext() )
+				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Timeout Manager");
+				while(true)
 				{
-					@SuppressWarnings("unchecked")
-					Tracker<Object> t = (Tracker<Object>) i.next();
-					if( t == null ) { i.remove(); continue; }
+					long at = -1;
+					
+					Iterator<Tracker<?>> i = targets.iterator();
+					while( i.hasNext() )
+					{
+						@SuppressWarnings("unchecked")
+						Tracker<Object> t = (Tracker<Object>) i.next();
+						if( t == null ) { i.remove(); continue; }
+						
+						try
+						{
+							long d = t.delay();
+							if( d < 0 ) { i.remove(); continue; }
+							if( d > 0 ) { if( at == -1 || (System.currentTimeMillis() + d) < at ) at = System.currentTimeMillis() + d; continue; }
+							// d == 0
+							Object target = t.target();
+							if( target != null ) t.onExpire().trigger(target);
+							i.remove();
+						}
+						catch(Exception e)
+						{
+							Manager.of(Logger.class).fine(Timeout.class, e);
+							i.remove();
+						}
+					}
 					
 					try
 					{
-						long d = t.delay();
-						if( d < 0 ) { i.remove(); continue; }
-						if( d > 0 ) { if( at == -1 || (System.currentTimeMillis() + d) < at ) at = System.currentTimeMillis() + d; continue; }
-						// d == 0
-						Object target = t.target();
-						if( target != null ) t.onExpire().trigger(target);
-						i.remove();
-					}
-					catch(Exception e)
-					{
-						Manager.of(Logger.class).fine(Timeout.class, e);
-						i.remove();
-					}
-				}
-				
-				try
-				{
-					synchronized(locker)
-					{
-						if( at < 0 )
+						synchronized(locker)
 						{
-							Manager.of(Logger.class).finest(Timeout.class, "No future elements to watch. Sleeping until further notice.");
-							locker.wait();
-						}
-						else
-						{
-							long ms = at - System.currentTimeMillis();
-							if( ms <= 0 ) continue;
-							
-							Manager.of(Logger.class).finest(Timeout.class, "Next timeout element is in {}ms. Sleeping.", ms);
-							locker.wait(ms);
+							if( at < 0 )
+							{
+								Manager.of(Logger.class).finest(Timeout.class, "No future elements to watch. Sleeping until further notice.");
+								locker.wait();
+							}
+							else
+							{
+								long ms = at - System.currentTimeMillis();
+								if( ms <= 0 ) continue;
+								
+								Manager.of(Logger.class).finest(Timeout.class, "Next timeout element is in {}ms. Sleeping.", ms);
+								locker.wait(ms);
+							}
 						}
 					}
+					catch(InterruptedException e) { return; }
 				}
-				catch(InterruptedException e) { return; }
-			}
-		});
+			});
+		}
+		
+		private Task<Void> task = null;
 	}
 	
 	protected Class<? extends DefaultTimeout.Implementation> defaultTarget() { return DefaultTimeout.Implementation.class; }
@@ -106,6 +113,13 @@ public class DefaultTimeout extends Manager<Timeout>
 		return super.template()
 			.summary("Non-blocking timeout manager")
 			.description("This timeout manager will keep track of all trackers in a non-blocking efficient manner and will defer"
-				+ "processing of expired elements to the Execution manager.");
+				+ "processing of expired elements to the Execution manager.")
+			.builder((data, instance) ->
+			{
+				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN ) 
+					((Implementation)instance).task = ((Implementation)instance).task();
+				else 
+					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> { ((Implementation)instance).task = ((Implementation)instance).task(); }));
+			});
 	}
 }

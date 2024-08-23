@@ -80,6 +80,8 @@ public class DefaultTranslator extends Manager<Translator>
 				Data lang = Data.map();
 				try
 				{
+					// TODO : use a storage instead of direct file access
+					
 					Path dir = Paths.get(valueOf("folder").asString() + File.separatorChar + language);
 					if( !dir.toFile().isDirectory() ) return;
 					

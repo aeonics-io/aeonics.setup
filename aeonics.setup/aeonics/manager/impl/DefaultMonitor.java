@@ -210,7 +210,7 @@ public class DefaultMonitor extends Manager<Monitor>
 				.defaultValue(Data.of(false)))
 			.builder((data, instance) ->
 			{
-				Monitor.add("hardware", () -> { return Hardware.export(); });
+				Monitor.addProbe("hardware", () -> { return Hardware.export(); });
 			})
 			;
 	}

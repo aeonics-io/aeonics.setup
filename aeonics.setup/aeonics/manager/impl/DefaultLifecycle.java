@@ -15,13 +15,13 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 {
 	private static class Implementation extends Lifecycle
 	{
-		private AtomicReference<Phase> current = new AtomicReference<>(null);
+		private AtomicReference<Phase> current = new AtomicReference<>(Phase.BOOT);
 		
 		public void boot() 
 		{
 			if( Thread.currentThread() != Boot.MAIN )
 				throw new IllegalStateException("This method must be called from the main thread");
-			if( !current.compareAndSet(null, Phase.LOAD) )
+			if( !current.compareAndSet(Phase.BOOT, Phase.LOAD) )
 				throw new IllegalStateException("This method cannot be called more than once");
 			
 			start(Phase.LOAD);
@@ -72,6 +72,8 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 				Manager.of(Logger.class).fine(Lifecycle.class, e);
 			}
 		}
+		
+		public Phase phase() { return current.get(); }
 	}
 	
 	protected Class<? extends DefaultLifecycle.Implementation> defaultTarget() { return DefaultLifecycle.Implementation.class; }

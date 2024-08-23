@@ -23,7 +23,19 @@ import aeonics.util.Callback;
 
 public class Main extends Plugin
 {
-	// TODO : snapshot boot + snapshot/restore registry
+	private String hash = null;
+	private String salt = null;
+	
+	public Main()
+	{
+		// allow the user to provide the default hash/salt for the admin password
+		hash = System.getProperty("AEONICS_SECURITY_ADMIN_HASH");
+		if( hash == null || hash.isBlank() ) hash = null;
+		else System.clearProperty("AEONICS_SECURITY_ADMIN_HASH");
+		salt = System.getProperty("AEONICS_SECURITY_ADMIN_SALT");
+		if( salt == null || salt.isBlank() ) salt = null;
+		else System.clearProperty("AEONICS_SECURITY_ADMIN_SALT");
+	}
 	
 	public String summary() { return "Default System"; }
 	public String description() { return "Initializes the default managers, security settings, sets the default factory for built-in types and loads the initial snapshot if necessary."; }
@@ -55,34 +67,34 @@ public class Main extends Plugin
 	{
 		if( Manager.of(Lifecycle.class) == Lifecycle.NOOP )
 		{
-			Lifecycle instance = new DefaultLifecycle().template().build();
-			instance.name("Lifecycle Manager");
+			Lifecycle instance = new DefaultLifecycle()
+				.template()
+				.build()
+				.name("Lifecycle Manager");
 			Registry.add(Manager.replace(Lifecycle.class, instance));
 		}
 		
-		Manager.of(Lifecycle.class).before(Phase.LOAD, Callback.once(() -> beforeLoad()));
-		Manager.of(Lifecycle.class).on(Phase.LOAD, Callback.once(() -> onLoad()));
-		Manager.of(Lifecycle.class).after(Phase.LOAD, Callback.once(() -> afterLoad()));
+		Lifecycle.before(Phase.LOAD, Callback.once(() -> beforeLoad()));
+		Lifecycle.on(Phase.LOAD, Callback.once(() -> onLoad()));
+		Lifecycle.after(Phase.LOAD, Callback.once(() -> afterLoad()));
 		
-		Manager.of(Lifecycle.class).before(Phase.CONFIG, Callback.once(() -> beforeConfig()));
-		Manager.of(Lifecycle.class).on(Phase.CONFIG, Callback.once(() -> onConfig()));
-		Manager.of(Lifecycle.class).after(Phase.CONFIG, Callback.once(() -> afterConfig()));
+		Lifecycle.before(Phase.CONFIG, Callback.once(() -> beforeConfig()));
+		Lifecycle.on(Phase.CONFIG, Callback.once(() -> onConfig()));
+		Lifecycle.after(Phase.CONFIG, Callback.once(() -> afterConfig()));
 		
-		Manager.of(Lifecycle.class).before(Phase.RUN, Callback.once(() -> beforeRun()));
-		Manager.of(Lifecycle.class).on(Phase.RUN, Callback.once(() -> onRun()));
-		Manager.of(Lifecycle.class).after(Phase.RUN, Callback.once(() -> afterRun()));
+		Lifecycle.before(Phase.RUN, Callback.once(() -> beforeRun()));
+		Lifecycle.on(Phase.RUN, Callback.once(() -> onRun()));
+		Lifecycle.after(Phase.RUN, Callback.once(() -> afterRun()));
 		
-		Manager.of(Lifecycle.class).before(Phase.SHUTDOWN, Callback.once(() -> beforeShutdown()));
-		Manager.of(Lifecycle.class).on(Phase.SHUTDOWN, Callback.once(() -> onShutdown()));
-		Manager.of(Lifecycle.class).after(Phase.SHUTDOWN, Callback.once(() -> afterShutdown()));
+		Lifecycle.before(Phase.SHUTDOWN, Callback.once(() -> beforeShutdown()));
+		Lifecycle.on(Phase.SHUTDOWN, Callback.once(() -> onShutdown()));
+		Lifecycle.after(Phase.SHUTDOWN, Callback.once(() -> afterShutdown()));
+		
+		Snapshot.onSnapshot(this::onSnapshot);
+		Snapshot.onRestore(this::onRestore);
 	}
 	
 	private void beforeLoad()
-	{
-		manager(Config.class, DefaultConfig.class, false);
-	}
-	
-	private void onLoad()
 	{
 		// basic entities
 		Factory.add(new Queue());
@@ -105,8 +117,32 @@ public class Main extends Plugin
 		Factory.add(new Rule.MatchContext());
 		Factory.add(new Rule.MatchNone());
 		Factory.add(new Rule.Or());
+		Factory.add(new Rule.Not());
+		Factory.add(new Rule.Role());
 		Factory.add(new Rule.Xor());
 		Factory.add(new User());
+		
+		// managers
+		manager(Config.class, DefaultConfig.class, false);
+		manager(Snapshot.class, DefaultSnapshot.class, false);
+		manager(Security.class, DefaultSecurity.class, false);
+		manager(Vault.class, DefaultVault.class, false);
+		manager(Monitor.class, DefaultMonitor.class, false);
+		manager(Scheduler.class, DefaultScheduler.class, false);
+		manager(Timeout.class, DefaultTimeout.class, false);
+		manager(Network.class, DefaultNetwork.class, false);
+		manager(Translator.class, DefaultTranslator.class, false);
+		
+		if( Manager.of(Executor.class) == Executor.SYNCHRONOUS )
+		{
+			Executor instance = new DefaultExecutor().template().build().name("Executor Manager");
+			Registry.add(Manager.replace(Executor.class, instance));
+		}
+	}
+	
+	private void onLoad()
+	{
+		/* nothing to do */
 	}
 	
 	private void afterLoad()
@@ -116,38 +152,30 @@ public class Main extends Plugin
 	
 	private void beforeConfig()
 	{
-		if( Manager.of(Executor.class) == Executor.SYNCHRONOUS )
+		// restore the latest snapshot
+		String latestSnapshot = Manager.of(Snapshot.class).latest();
+		if( latestSnapshot != null )
 		{
-			Executor instance = new DefaultExecutor().template().build();
-			instance.name("Executor Manager");
-			Registry.add(Manager.replace(Executor.class, instance));
+			try { Manager.of(Snapshot.class).restore(latestSnapshot).await(); }
+			catch(Exception e) { Manager.of(Logger.class).warning(Snapshot.class, e); }
 		}
-		
-		manager(Snapshot.class, DefaultSnapshot.class, false);
-		manager(Vault.class, DefaultVault.class, false);
-		manager(Monitor.class, DefaultMonitor.class, false);
+		else
+			Manager.of(Logger.class).fine(Snapshot.class, "No snapshot to restore");
 	}
 	
 	private void onConfig()
 	{
-		/* nothing to do */
+		// enable monitoring
 		Manager.of(Config.class).set(Monitor.class, "enabled", Data.of(true));
 	}
 	
 	private void afterConfig()
 	{
-		manager(Scheduler.class, DefaultScheduler.class, false);
-		manager(Timeout.class, DefaultTimeout.class, false);
-		manager(Network.class, DefaultNetwork.class, false);
-		manager(Security.class, DefaultSecurity.class, false);
-		manager(Translator.class, DefaultTranslator.class, false);
+		/* nothing to do */
 	}
 	
 	private void beforeRun()
 	{
-		Manager.of(Snapshot.class).onSnapshot((data) -> onSnapshot(data));
-		Manager.of(Snapshot.class).onSnapshot((data) -> onRestore(data));
-		
 		if( Manager.of(Logger.class) == Logger.CONSOLE )
 		{
 			Logger instance = new DefaultLogger().template().build();
@@ -155,6 +183,7 @@ public class Main extends Plugin
 			Registry.add(Manager.replace(Logger.class, instance));
 		}
 		
+		// set default security settings if no security is present
 		if( !Registry.of(Provider.class).iterator().hasNext() )
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
@@ -168,10 +197,29 @@ public class Main extends Plugin
 				.<User.Type>cast()
 				;
 			
-			// initialize the default provider with user/pass
+			if( this.hash == null || this.salt == null )
+			{
+				// hash/salt were not provided in system properties
+				// so generate a random password and hash now
+				String password = Manager.of(Security.class).randomHash();
+				salt = Manager.of(Security.class).randomHash();
+				hash = Manager.of(Security.class).hash(password, salt);
+				
+				// CAUTION : this is on purpose, send it to the console and NOT to the logger
+				System.err.println("****** CAUTION ******");
+				System.err.println("No default admin user hash/salt were provided. A new password was generated:");
+				System.err.println("\t" + password);
+				System.err.println("To reuse this password, use these command line arguments:");
+				System.err.println("\t-DAEONICS_SECURITY_ADMIN_HASH=" + hash + " -DAEONICS_SECURITY_ADMIN_SALT=" + salt);
+			}
+			
+			Data context = Data.map().put("username", user.id()).put("hash", hash).put("salt", salt);
+			hash = null; salt = null;
+			
+			// initialize the default provider
 			Provider.Type provider = new Provider.Local().template().build()
 				.name("Local identity provider");
-			if( provider.join(Data.map().put("username", user.id()).put("password", "Change the admin password ASAP!"), user) != user )
+			if( provider.join(context, user) != user )
 				Manager.of(Logger.class).severe(Security.class, "Default user could not join local provider");
 
 			new Policy.Allow().template().build(Data.map().put("scope", "topic"))
@@ -184,7 +232,11 @@ public class Main extends Plugin
 	
 	private void onRun()
 	{
-		/* nothing to do */
+		// start all origins
+		Registry.of(Origin.class).forEach((e) -> {
+			try { if( e.stopped() ) e.start(); }
+			catch(Exception x) { Manager.of(Logger.class).warning(e.getClass(), x); }
+		});
 	}
 	
 	private void afterRun()
@@ -204,16 +256,63 @@ public class Main extends Plugin
 	
 	private void afterShutdown()
 	{
-		/* nothing to do */
+		Manager.replace(Logger.class, Logger.CONSOLE);
+		
+		// stop all origins
+		Registry.of(Origin.class).forEach((e) -> {
+			try { if( e.started() ) e.stop(); }
+			catch(Exception x) { Manager.of(Logger.class).warning(e.getClass(), x); }
+		});
 	}
 	
 	private void onSnapshot(Data data)
 	{
-		/* nothing to do */
+		if( data == null || !data.isMap() ) return;
+		
+		Data config = Data.map();
+		Manager.of(Config.class).all().entrySet().forEach((entry) -> {
+			String type = entry.getKey();
+			entry.getValue().entrySet().forEach((subentry) -> {
+				config.put(Config.implodeName(type, subentry.getKey()), subentry.getValue());
+			});
+		});
+		data.put("config", config);
+		
+		Data registry = Data.map();
+		Registry.all().forEach((r) -> {
+			Data entities = Data.list();
+			r.forEach((e) -> {
+				if( !e.internal() )
+					entities.add(e.snapshot());
+			});
+			if( entities.size() > 0 )
+				registry.put(r.category(), entities);
+		});
+		data.put("registry", registry);
+		
+		// TODO : DefaultSecurity.tokens
+		// TODO : DefaultVault.store
+		// TODO : [BloodStream]aeonics.oidc.Common.[Code|Refresh|OTP].local
 	}
 	
 	private void onRestore(Data data)
 	{
-		/* nothing to do */
+		if( data == null || !data.isMap() ) return;
+		
+		if( !data.isEmpty("config") )
+		{
+			Config c = Manager.of(Config.class);
+			data.get("config").entrySet().forEach((entry) -> {
+				c.set(entry.getKey(), entry.getValue());
+			});
+		}
+		
+		if( !data.isEmpty("registry") )
+		{
+			data.get("registry").entrySet().forEach((entry) -> {
+				Registry<?> r = Registry.of(entry.getKey());
+				entry.getValue().forEach((entity) -> r.put(Factory.build(entity)));
+			});
+		}
 	}
 }

@@ -1,7 +1,9 @@
 package aeonics.manager.impl;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.math.BigInteger;
+import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -27,6 +29,7 @@ import aeonics.entity.security.Role;
 import aeonics.entity.security.Token;
 import aeonics.entity.security.User;
 import aeonics.manager.Config;
+import aeonics.manager.Lifecycle;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Security;
@@ -34,6 +37,7 @@ import aeonics.manager.Timeout;
 import aeonics.manager.Timeout.Tracker;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
+import aeonics.util.Callback;
 
 public class DefaultSecurity extends Manager<Security>
 {
@@ -120,6 +124,30 @@ public class DefaultSecurity extends Manager<Security>
 			catch(Exception e)
 			{
 				throw new SecurityException("Decrypt failed");
+			}
+		}
+		
+		public String hash(InputStream value)
+		{
+			try
+			{
+				MessageDigest md = MessageDigest.getInstance("SHA-256");
+				try( DigestInputStream dis = new DigestInputStream(value, md) )
+				{
+					byte[] buffer = new byte[8192];
+					while( dis.read(buffer) != -1 ); // process all data
+				}
+				
+				// first pass
+				byte[] hash = md.digest();
+				
+				int rounds = 10_000 + new BigInteger(hash).mod(BigInteger.valueOf(10_000)).intValue();
+				for( ; rounds > 0; rounds-- ) hash = md.digest(hash);
+				return parseBinaryHex(hash);
+			}
+			catch(Exception e)
+			{
+				throw new RuntimeException("Hash failed");
 			}
 		}
 		
@@ -437,7 +465,10 @@ public class DefaultSecurity extends Manager<Security>
 				.defaultValue(Data.empty()))
 			.builder((data, instance) ->
 			{
-				Manager.of(Timeout.class).watch(((Implementation)instance).tracker);
+				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN ) 
+					Manager.of(Timeout.class).watch(((Implementation)instance).tracker);
+				else
+					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> { Manager.of(Timeout.class).watch(((Implementation)instance).tracker); }));
 			});
 	}
 }
