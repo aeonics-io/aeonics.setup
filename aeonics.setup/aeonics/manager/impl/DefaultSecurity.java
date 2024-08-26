@@ -213,7 +213,7 @@ public class DefaultSecurity extends Manager<Security>
 				{
 					if( p.active() && p.supports(user) ) providers.add(p);
 				}
-				catch(Throwable t)
+				catch(Exception t)
 				{
 					Manager.of(Logger.class).warning(Security.class, t);
 				}
@@ -231,7 +231,7 @@ public class DefaultSecurity extends Manager<Security>
 				if( user == null ) return User.ANONYMOUS;
 				return user;
 			}
-			catch(Throwable t)
+			catch(Exception t)
 			{
 				Manager.of(Logger.class).warning(Security.class, t);
 			}

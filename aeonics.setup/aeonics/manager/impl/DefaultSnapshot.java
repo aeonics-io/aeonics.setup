@@ -13,7 +13,6 @@ import aeonics.data.Data;
 import aeonics.entity.Storage;
 import aeonics.manager.Config;
 import aeonics.manager.Executor;
-import aeonics.manager.Lifecycle;
 import aeonics.manager.Executor.Task;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
@@ -35,7 +34,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 		 * @param data the data
 		 * @throws Exception if something wrong happens
 		 */
-		private static void localSnapshot(Consumer<Data> handler, Data data) throws Throwable { handler.accept(data); }
+		private static void localSnapshot(Consumer<Data> handler, Data data) throws Exception { handler.accept(data); }
 		
 		/**
 		 * In order for {@link Snapshot.Snapshotable} entities to be able to perform a {@link CheckCaller},
@@ -44,7 +43,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 		 * @param data the data
 		 * @throws Exception if something wrong happens
 		 */
-		private static void localRestore(Consumer<Data> handler, Data data) throws Throwable { handler.accept(data); }
+		private static void localRestore(Consumer<Data> handler, Data data) throws Exception { handler.accept(data); }
 		
 		public Task<String> create(String suffix)
 		{
@@ -63,6 +62,9 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				+ (z.getSecond() < 10 ? "0" : "") + z.getSecond() + "Z";
 			
 			String name = prefix + "_" + suffix;
+			
+			Manager.of(Logger.class).info(Snapshot.class, "Creating snapshot {}", name);
+			long start = System.currentTimeMillis();
 			
 			return Manager.of(Executor.class).background(() ->
 			{
@@ -83,7 +85,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 					{
 						localSnapshot(handler, data);
 					}
-					catch(Throwable e)
+					catch(Exception e)
 					{
 						Manager.of(Logger.class).warning(Snapshot.class, e);
 					}
@@ -92,6 +94,8 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				for( Map.Entry<String, Data> files : all.entrySet() )
 					store.put(name + "/" + files.getKey() + ".json", files.getValue());
 				
+				long end = System.currentTimeMillis();
+				Manager.of(Logger.class).fine(Snapshot.class, "Snapshot creation completed in " + (end-start) + "ms");
 			}).then(() -> name);
 		}
 
@@ -131,14 +135,14 @@ public class DefaultSnapshot extends Manager<Snapshot>
 					{
 						localRestore(handler, data);
 					}
-					catch(Throwable e)
+					catch(Exception e)
 					{
 						Manager.of(Logger.class).warning(Snapshot.class, e);
 					}
 				}
 				
 				long end = System.currentTimeMillis();
-				Manager.of(Logger.class).fine(Lifecycle.class, "Snapshot restoration completed in " + (end-start) + "ms");
+				Manager.of(Logger.class).fine(Snapshot.class, "Snapshot restoration completed in " + (end-start) + "ms");
 			});
 		}
 

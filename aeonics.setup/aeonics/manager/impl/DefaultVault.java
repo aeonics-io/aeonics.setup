@@ -7,12 +7,10 @@ import java.util.function.Supplier;
 
 import aeonics.data.Data;
 import aeonics.entity.Entity;
-import aeonics.manager.Config;
 import aeonics.manager.Manager;
 import aeonics.manager.Security;
 import aeonics.manager.Snapshot;
 import aeonics.manager.Vault;
-import aeonics.template.Parameter;
 import aeonics.template.Template;
 import aeonics.util.CheckCaller;
 import aeonics.util.Json;
@@ -22,20 +20,14 @@ public class DefaultVault extends Manager<Vault>
 	private static class Implementation extends Vault
 	{
 		/**
-		 * private salt for data hashing
+		 * This is the salt used to further protect the data encryption key. Data is encrypted in all cases with a key provided 
+		 * by the entity. If a salt is set, then the encryption key is merged with that specific value which makes it impossible to 
+		 * decrypt the value even with the correct key given by the entity, unless the same salt is provided. This adds a layer of 
+		 * protection to the data encryption.
+		 * 
+		 * This value can only be set by the template builder function.
 		 */
 		private String salt = null;
-		
-		@Override
-		public void config(String key, Data value)
-		{
-			if( Config.implodeName(Vault.class, "salt").equals(key) )
-			{
-				String v = value == null ? null : value.asString();
-				if( v == null || v.isBlank() ) salt = null;
-				else salt = v;
-			}
-		}
 		
 		/**
 		 * Generates a combined version of the key using the private salt.
@@ -162,16 +154,14 @@ public class DefaultVault extends Manager<Vault>
 		return super.template()
 			.summary("Simple vault")
 			.description("This vault implementation stores data in memory and offers class instance access protection.")
-			.config(Vault.class, new Parameter("salt")
-				.summary("The encryption key salt")
-				.description("This is the salt used to further protect the data encryption key. Data is encrypted in all cases with a key provided "
-						+ "by the entity. If a salt is set, then the encryption key is merged with that specific value which makes it impossible to "
-						+ "decrypt the value even with the correct key given by the entity, unless the same salt is provided. This adds a layer of "
-						+ "protection to the data encryption.")
-				.format(Parameter.Format.TEXT)
-				.optional(true))
 			.builder((config, instance) ->
 			{
+				// undocumented parameter on purpose
+				// so that it does not get snapshotted and is not readdable or 
+				// settable other than from here
+				if( config.containsKey("salt") )
+					((Implementation)instance).salt = config.asString("salt");
+					
 				Snapshot.onRestore((data) ->
 				{
 					if( !(Manager.of(Vault.class) instanceof Implementation) ) return;

@@ -19,34 +19,39 @@ import aeonics.manager.impl.DefaultTimeout;
 import aeonics.manager.impl.DefaultTranslator;
 import aeonics.manager.impl.DefaultVault;
 import aeonics.template.Factory;
+import aeonics.template.Parameter;
 import aeonics.util.Callback;
 
 public class Main extends Plugin
 {
-	private String hash = null;
-	private String salt = null;
+	private String adminHash = null;
+	private String adminSalt = null;
+	private String vaultSalt = null;
 	
 	public Main()
 	{
 		// allow the user to provide the default hash/salt for the admin password
-		hash = System.getProperty("AEONICS_SECURITY_ADMIN_HASH");
-		if( hash == null || hash.isBlank() ) hash = null;
+		adminHash = System.getProperty("AEONICS_SECURITY_ADMIN_HASH");
+		if( adminHash == null || adminHash.isBlank() ) adminHash = null;
 		else System.clearProperty("AEONICS_SECURITY_ADMIN_HASH");
-		salt = System.getProperty("AEONICS_SECURITY_ADMIN_SALT");
-		if( salt == null || salt.isBlank() ) salt = null;
+		adminSalt = System.getProperty("AEONICS_SECURITY_ADMIN_SALT");
+		if( adminSalt == null || adminSalt.isBlank() ) adminSalt = null;
 		else System.clearProperty("AEONICS_SECURITY_ADMIN_SALT");
+		vaultSalt = System.getProperty("AEONICS_SECURITY_VAULT_SALT");
+		if( vaultSalt == null || vaultSalt.isBlank() ) vaultSalt = null;
+		else System.clearProperty("AEONICS_SECURITY_VAULT_SALT");
 	}
 	
 	public String summary() { return "Default System"; }
 	public String description() { return "Initializes the default managers, security settings, sets the default factory for built-in types and loads the initial snapshot if necessary."; }
 	
-	private <T extends Manager.Type> void manager(Class<T> type, Class<? extends Manager<T>> item, boolean strict)
+	private <T extends Manager.Type> void manager(Class<T> type, Class<? extends Manager<T>> item, boolean strict, Data parameters)
 	{
 		if( Manager.of(type) == null )
 		{
 			try
 			{
-				T instance = item.getConstructor().newInstance().template().build();
+				T instance = item.getConstructor().newInstance().template().build(parameters);
 				instance.name(type.getSimpleName() + " Manager");
 				Registry.add(Manager.set(type, instance));
 			}
@@ -123,15 +128,17 @@ public class Main extends Plugin
 		Factory.add(new User());
 		
 		// managers
-		manager(Config.class, DefaultConfig.class, false);
-		manager(Snapshot.class, DefaultSnapshot.class, false);
-		manager(Security.class, DefaultSecurity.class, false);
-		manager(Vault.class, DefaultVault.class, false);
-		manager(Monitor.class, DefaultMonitor.class, false);
-		manager(Scheduler.class, DefaultScheduler.class, false);
-		manager(Timeout.class, DefaultTimeout.class, false);
-		manager(Network.class, DefaultNetwork.class, false);
-		manager(Translator.class, DefaultTranslator.class, false);
+		manager(Config.class, DefaultConfig.class, false, null);
+		manager(Snapshot.class, DefaultSnapshot.class, false, null);
+		manager(Security.class, DefaultSecurity.class, false, null);
+		manager(Vault.class, DefaultVault.class, false, Data.map().put("salt", vaultSalt));
+		manager(Monitor.class, DefaultMonitor.class, false, null);
+		manager(Scheduler.class, DefaultScheduler.class, false, null);
+		manager(Timeout.class, DefaultTimeout.class, false, null);
+		manager(Network.class, DefaultNetwork.class, false, null);
+		manager(Translator.class, DefaultTranslator.class, false, null);
+		
+		vaultSalt = null;
 		
 		if( Manager.of(Executor.class) == Executor.SYNCHRONOUS )
 		{
@@ -142,7 +149,14 @@ public class Main extends Plugin
 	
 	private void onLoad()
 	{
-		/* nothing to do */
+		Config c = Manager.of(Config.class);
+		
+		c.declare(Plugin.class, new Parameter("path")
+			.summary("Plugins directory")
+			.description("The path to the plugins directory. This parameter must be set in the command line.")
+			.format(Parameter.Format.TEXT)
+			.rule(Parameter.Rule.PATH)
+			.optional(false));
 	}
 	
 	private void afterLoad()
@@ -197,24 +211,24 @@ public class Main extends Plugin
 				.<User.Type>cast()
 				;
 			
-			if( this.hash == null || this.salt == null )
+			if( this.adminHash == null || this.adminSalt == null )
 			{
 				// hash/salt were not provided in system properties
 				// so generate a random password and hash now
 				String password = Manager.of(Security.class).randomHash();
-				salt = Manager.of(Security.class).randomHash();
-				hash = Manager.of(Security.class).hash(password, salt);
+				adminSalt = Manager.of(Security.class).randomHash();
+				adminHash = Manager.of(Security.class).hash(password, adminSalt);
 				
 				// CAUTION : this is on purpose, send it to the console and NOT to the logger
 				System.err.println("****** CAUTION ******");
 				System.err.println("No default admin user hash/salt were provided. A new password was generated:");
 				System.err.println("\t" + password);
-				System.err.println("To reuse this password, use these command line arguments:");
-				System.err.println("\t-DAEONICS_SECURITY_ADMIN_HASH=" + hash + " -DAEONICS_SECURITY_ADMIN_SALT=" + salt);
+				System.err.println("To reuse this password without snapshot, use these command line arguments:");
+				System.err.println("\t-DAEONICS_SECURITY_ADMIN_HASH=" + adminHash + " -DAEONICS_SECURITY_ADMIN_SALT=" + adminSalt);
 			}
 			
-			Data context = Data.map().put("username", user.id()).put("hash", hash).put("salt", salt);
-			hash = null; salt = null;
+			Data context = Data.map().put("username", user.id()).put("hash", adminHash).put("salt", adminSalt);
+			adminHash = null; adminSalt = null;
 			
 			// initialize the default provider
 			Provider.Type provider = new Provider.Local().template().build()
@@ -289,10 +303,6 @@ public class Main extends Plugin
 				registry.put(r.category(), entities);
 		});
 		data.put("registry", registry);
-		
-		// TODO : DefaultSecurity.tokens
-		// TODO : DefaultVault.store
-		// TODO : [BloodStream]aeonics.oidc.Common.[Code|Refresh|OTP].local
 	}
 	
 	private void onRestore(Data data)

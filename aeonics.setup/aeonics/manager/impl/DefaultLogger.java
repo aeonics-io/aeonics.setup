@@ -13,6 +13,12 @@ public class DefaultLogger extends Manager<Logger>
 {
 	private static class Implementation extends Logger
 	{
+		public Implementation()
+		{
+			// copy the default log level
+			this.level = Logger.CONSOLE.level();
+		}
+		
 		public void handle(int level, String type, String message, Object... params)
 		{
 			if( level < level() || message == null || message.isBlank() ) return;
