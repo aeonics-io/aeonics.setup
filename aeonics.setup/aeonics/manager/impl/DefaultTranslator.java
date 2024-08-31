@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import aeonics.data.Data;
-import aeonics.entity.Registry;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Translator;
@@ -143,19 +142,18 @@ public class DefaultTranslator extends Manager<Translator>
 				.optional(true)
 				.min(2).max(2)
 				.rule(Parameter.Rule.LOWER)
-				.defaultValue(Data.of("en")))
+				.defaultValue("en"))
 			.add(new Parameter("folder")
 				.summary("Resource folder")
 				.description("The name of the folder from which translations can be loaded. That folder should contain one subfolder per language.")
 				.format(Parameter.Format.TEXT)
 				.optional(true)
-				.defaultValue(Data.of("translations")))
-			.builder((data, instance) ->
+				.defaultValue("translations"))
+			.onCreate((data, instance) ->
 			{
 				if( !data.isEmpty("default") ) instance.language(data.asString("default"));
-				Registry.add(instance);
 			})
-			.modifier((data, instance) ->
+			.onUpdate((data, instance) ->
 			{
 				if( !data.isEmpty("default") ) instance.language(data.asString("default"));
 			});

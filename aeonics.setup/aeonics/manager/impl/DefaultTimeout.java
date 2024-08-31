@@ -48,7 +48,7 @@ public class DefaultTimeout extends Manager<Timeout>
 		{
 			return Manager.of(Executor.class).background(() -> 
 			{
-				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Timeout Manager");
+				Thread.currentThread().setName("Background :: Timeout Manager");
 				while(true)
 				{
 					long at = -1;
@@ -67,7 +67,12 @@ public class DefaultTimeout extends Manager<Timeout>
 							if( d > 0 ) { if( at == -1 || (System.currentTimeMillis() + d) < at ) at = System.currentTimeMillis() + d; continue; }
 							// d == 0
 							Object target = t.target();
-							if( target != null ) t.onExpire().trigger(target);
+							if( target != null )
+							{
+								// this code is running in the background executor
+								// so trigger the event in the normal executor
+								Manager.of(Executor.class).normal(() -> t.onExpire().trigger(target));
+							}
 							i.remove();
 						}
 						catch(Exception e)
@@ -114,7 +119,7 @@ public class DefaultTimeout extends Manager<Timeout>
 			.summary("Non-blocking timeout manager")
 			.description("This timeout manager will keep track of all trackers in a non-blocking efficient manner and will defer"
 				+ "processing of expired elements to the Execution manager.")
-			.builder((data, instance) ->
+			.onCreate((data, instance) ->
 			{
 				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN ) 
 					((Implementation)instance).task = ((Implementation)instance).task();

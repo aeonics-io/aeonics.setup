@@ -68,7 +68,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 			
 			return Manager.of(Executor.class).background(() ->
 			{
-				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Snapshot");
+				Thread.currentThread().setName("Background :: Snapshot");
 				
 				Data all = Data.map();
 				for( Consumer<Data> handler : createCallback )
@@ -112,12 +112,12 @@ public class DefaultSnapshot extends Manager<Snapshot>
 			if( files == null || files.size() == 0 )
 			{
 				Manager.of(Logger.class).fine(Snapshot.class, "Snapshot {} does not contain anything to restore", snapshot);
-				return Task.completed(null);
+				return Manager.of(Executor.class).normalResolved((Void)null);
 			}
 			
 			return Manager.of(Executor.class).background(() ->
 			{
-				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Restore");
+				Thread.currentThread().setName("Background :: Restore");
 				
 				Data all = Data.map();
 				for( Consumer<Data> handler : restoreCallback )
@@ -187,7 +187,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				try
 				{ 
 					store = Factory.of(Storage.class).get(Storage.File.class)
-						.build(Data.map().put("root", value))
+						.create(Data.map().put("root", value))
 						.name("Snapshot storage")
 						.internal(true);
 				}
@@ -213,6 +213,6 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				.description("The path to the snapshot folder")
 				.format(Parameter.Format.TEXT)
 				.optional(true)
-				.defaultValue(Data.of("shapshots")));
+				.defaultValue("shapshots"));
 	}
 }

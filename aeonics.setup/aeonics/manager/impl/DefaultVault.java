@@ -154,7 +154,7 @@ public class DefaultVault extends Manager<Vault>
 		return super.template()
 			.summary("Simple vault")
 			.description("This vault implementation stores data in memory and offers class instance access protection.")
-			.builder((config, instance) ->
+			.onCreate((config, instance) ->
 			{
 				// undocumented parameter on purpose
 				// so that it does not get snapshotted and is not readdable or 

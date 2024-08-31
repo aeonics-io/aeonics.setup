@@ -70,13 +70,13 @@ public class DefaultScheduler extends Manager<Scheduler>
 			.template()
 			.summary("Scheduler data origin")
 			.description("This data origin is used by the Scheduler to inject messages in the system.")
-			.build()
+			.create()
 			.internal(true)
 			.name("Scheduler")
 			.<Origin.Background>cast()
 			.run(() ->
 			{
-				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Scheduler Manager");
+				Thread.currentThread().setName("Background :: Scheduler Manager");
 				while(true)
 				{
 					ZonedDateTime now = ZonedDateTime.now();
@@ -157,7 +157,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 			.summary("Task scheduler")
 			.description("This task scheduler is designed to optimize the processing power by sleeping until the next task has to run instead of waking up at regular interval. "
 				+ "This allows a finer granularity in task scheduling without requiring constant checks.")
-			.builder((data, instance) -> 
+			.onCreate((data, instance) -> 
 			{
 				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN )
 				{

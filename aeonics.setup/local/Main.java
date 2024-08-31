@@ -3,6 +3,7 @@ package local;
 import aeonics.Plugin;
 import aeonics.data.Data;
 import aeonics.entity.*;
+import aeonics.entity.basic.Console;
 import aeonics.entity.security.*;
 import aeonics.manager.*;
 import aeonics.manager.Lifecycle.Phase;
@@ -18,9 +19,11 @@ import aeonics.manager.impl.DefaultSnapshot;
 import aeonics.manager.impl.DefaultTimeout;
 import aeonics.manager.impl.DefaultTranslator;
 import aeonics.manager.impl.DefaultVault;
+import aeonics.template.Channel;
 import aeonics.template.Factory;
 import aeonics.template.Parameter;
 import aeonics.util.Callback;
+import aeonics.util.Hardware;
 
 public class Main extends Plugin
 {
@@ -51,9 +54,9 @@ public class Main extends Plugin
 		{
 			try
 			{
-				T instance = item.getConstructor().newInstance().template().build(parameters);
+				T instance = item.getConstructor().newInstance().template().create(parameters);
 				instance.name(type.getSimpleName() + " Manager");
-				Registry.add(Manager.set(type, instance));
+				Manager.set(type, instance);
 			}
 			catch(Exception e)
 			{
@@ -74,9 +77,9 @@ public class Main extends Plugin
 		{
 			Lifecycle instance = new DefaultLifecycle()
 				.template()
-				.build()
+				.create()
 				.name("Lifecycle Manager");
-			Registry.add(Manager.replace(Lifecycle.class, instance));
+			Manager.replace(Lifecycle.class, instance);
 		}
 		
 		Lifecycle.before(Phase.LOAD, Callback.once(() -> beforeLoad()));
@@ -102,6 +105,7 @@ public class Main extends Plugin
 	private void beforeLoad()
 	{
 		// basic entities
+		Factory.add(new Probe());
 		Factory.add(new Queue());
 		Factory.add(new Storage.File());
 		Factory.add(new Storage.Memory());
@@ -127,6 +131,8 @@ public class Main extends Plugin
 		Factory.add(new Rule.Xor());
 		Factory.add(new User());
 		
+		Factory.add(new Console());
+		
 		// managers
 		manager(Config.class, DefaultConfig.class, false, null);
 		manager(Snapshot.class, DefaultSnapshot.class, false, null);
@@ -142,8 +148,8 @@ public class Main extends Plugin
 		
 		if( Manager.of(Executor.class) == Executor.SYNCHRONOUS )
 		{
-			Executor instance = new DefaultExecutor().template().build().name("Executor Manager");
-			Registry.add(Manager.replace(Executor.class, instance));
+			Executor instance = new DefaultExecutor().template().create().name("Executor Manager");
+			Manager.replace(Executor.class, instance);
 		}
 	}
 	
@@ -157,6 +163,15 @@ public class Main extends Plugin
 			.format(Parameter.Format.TEXT)
 			.rule(Parameter.Rule.PATH)
 			.optional(false));
+		
+		c.declare("aeonics.setup", new Parameter("initialized")
+			.summary("Default setup has been initialized")
+			.description("This parameter defines if the default setup has already been initialized (true) or if it should done when starting the config phase (false)."
+					+ " This is normally set by the system to detect an initial snapshot.")
+			.format(Parameter.Format.BOOLEAN)
+			.rule(Parameter.Rule.BOOLEAN)
+			.optional(true)
+			.defaultValue(false));
 	}
 	
 	private void afterLoad()
@@ -181,6 +196,23 @@ public class Main extends Plugin
 	{
 		// enable monitoring
 		Manager.of(Config.class).set(Monitor.class, "enabled", Data.of(true));
+		
+		if( !Manager.of(Config.class).get("aeonics.setup", "initialized").asBool() )
+		{
+			setupLoggerFlow();
+			setupMonitorFlow();
+		}
+		
+		new Probe() {}
+			.template()
+			.summary("Hardware")
+			.description("This probe returns the hardware CPU and RAM metrics.")
+			.create()
+			.source(() ->
+			{
+				return Hardware.export();
+			})
+			.name("hardware");
 	}
 	
 	private void afterConfig()
@@ -192,9 +224,9 @@ public class Main extends Plugin
 	{
 		if( Manager.of(Logger.class) == Logger.CONSOLE )
 		{
-			Logger instance = new DefaultLogger().template().build();
+			Logger instance = new DefaultLogger().template().create();
 			instance.name("Logger Manager");
-			Registry.add(Manager.replace(Logger.class, instance));
+			Manager.replace(Logger.class, instance);
 		}
 		
 		// set default security settings if no security is present
@@ -202,12 +234,12 @@ public class Main extends Plugin
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
 			
-			User.Type user = new User().template().build(Data.map().put("__id", "admin").put("active", true))
+			User.Type user = new User().template().create(Data.map().put("__id", "admin").put("active", true))
 				.name("Admin User")
 				.addRelation("roles", Role.SUPERADMIN)
-				.addRelation("groups", new Group().template().build()
+				.addRelation("groups", new Group().template().create()
 					.name("Administrators")
-					.addRelation("roles", new Role().template().build().name("Admin")))
+					.addRelation("roles", new Role().template().create().name("Admin")))
 				.<User.Type>cast()
 				;
 			
@@ -231,14 +263,14 @@ public class Main extends Plugin
 			adminHash = null; adminSalt = null;
 			
 			// initialize the default provider
-			Provider.Type provider = new Provider.Local().template().build()
+			Provider.Type provider = new Provider.Local().template().create()
 				.name("Local identity provider");
 			if( provider.join(context, user) != user )
 				Manager.of(Logger.class).severe(Security.class, "Default user could not join local provider");
 
-			new Policy.Allow().template().build(Data.map().put("scope", "topic"))
+			new Policy.Allow().template().create(Data.map().put("scope", "topic"))
 				.name("Allow everyone to use any topic")
-				.addRelation("rule", new Rule.MatchAll().template().build().name("Match all"))
+				.addRelation("rule", new Rule.MatchAll().template().create().name("Match all"))
 				.<Policy.Type>cast()
 				;
 		}
@@ -320,9 +352,72 @@ public class Main extends Plugin
 		if( !data.isEmpty("registry") )
 		{
 			data.get("registry").entrySet().forEach((entry) -> {
-				Registry<?> r = Registry.of(entry.getKey());
-				entry.getValue().forEach((entity) -> r.put(Factory.build(entity)));
+				entry.getValue().forEach((entity) -> Factory.build(entity));
 			});
 		}
+	}
+	
+	private void setupLoggerFlow()
+	{
+		// ===========================
+		// Logger topic
+		// ===========================
+		
+		Topic.Type topic = new Topic()
+			.template()
+			.create()
+			.name("log");
+		Queue.Type queue = new Queue()
+			.template()
+			.create();
+		Destination.Type destination = Factory.of(Destination.class).get(Console.class).create();
+		topic.addRelation("queues", queue, Data.map().put("binding", "#"));
+		queue.addRelation("destinations", destination, Data.map().put("input", "data"));
+	}
+	
+	private void setupMonitorFlow()
+	{
+		// ===========================
+		// Monitor topic
+		// ===========================
+		
+		Origin.Type origin = new Origin.Scheduled()
+			.template()
+			.output(new Channel("metrics")
+				.summary("Metrics")
+				.description("System metrics"))
+			.output(new Channel("probes")
+				.summary("Probes")
+				.description("System probes"))
+			.summary("Monitoring data origin")
+			.description("This origin entity collects monioring metrics at the interval defined by the monitor manager and feeds them as data in the system.")
+			.create(Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (Manager.of(Config.class).get(Monitor.class, "window").asLong() / 1000)))
+			.name("Monitor input");
+		origin
+			.<Origin.Scheduled.Type>cast()
+			.task((time) -> 
+			{
+				if( !Manager.of(Config.class).get(Monitor.class, "enabled").asBool() ) return;
+				
+				Data monitor = Manager.of(Monitor.class).report();
+				if( !monitor.isEmpty() )
+					origin.emit(new Message("metrics").user(User.SYSTEM.id()).content(monitor), "metrics");
+			});
+		Topic.Type topic = new Topic()
+			.template()
+			.create()
+			.name("monitor");
+		Queue.Type queue = new Queue()
+			.template()
+			.create();
+		Destination.Type destination = Factory.of(Destination.class).get(Console.class).create();
+		origin.addRelation("topics", topic, Data.map().put("channel", "metrics"));
+		origin.addRelation("topics", topic, Data.map().put("channel", "probes"));
+		topic.addRelation("queues", queue, Data.map().put("binding", "#"));
+		queue.addRelation("destinations", destination, Data.map().put("input", "data"));
+		
+		Manager.of(Config.class).watch(Monitor.class, "window", (key, value) -> { 
+			Factory.modify(origin, Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (value.asLong() / 1000))); 
+		});
 	}
 }

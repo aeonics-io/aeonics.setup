@@ -12,7 +12,6 @@ import aeonics.manager.Manager;
 import aeonics.manager.Monitor;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
-import aeonics.util.Hardware;
 
 public class DefaultMonitor extends Manager<Monitor>
 {
@@ -200,18 +199,14 @@ public class DefaultMonitor extends Manager<Monitor>
 				.rule(Parameter.Rule.DIGIT)
 				.format(Parameter.Format.NUMBER)
 				.optional(true)
-				.defaultValue(Data.of(60_000)))
+				.defaultValue(60_000))
 			.config(Monitor.class, new Parameter("enabled")
 				.summary("Enable monitoring")
 				.description("Whether or not the monitoring should be enabled. If set to false, then all monitoring requests are ignored.")
 				.rule(Parameter.Rule.BOOLEAN)
 				.format(Parameter.Format.BOOLEAN)
 				.optional(true)
-				.defaultValue(Data.of(false)))
-			.builder((data, instance) ->
-			{
-				Monitor.addProbe("hardware", () -> { return Hardware.export(); });
-			})
-			;
+				.defaultValue(false))
+				;
 	}
 }

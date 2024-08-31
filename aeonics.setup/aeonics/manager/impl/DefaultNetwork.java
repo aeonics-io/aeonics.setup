@@ -27,13 +27,13 @@ import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLHandshakeException;
 
 import aeonics.data.Data;
+import aeonics.entity.Probe;
 import aeonics.manager.Config;
 import aeonics.manager.Executor;
 import aeonics.manager.Lifecycle;
 import aeonics.manager.Executor.Task;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
-import aeonics.manager.Monitor;
 import aeonics.manager.Network;
 import aeonics.manager.Timeout;
 import aeonics.manager.Timeout.Tracker;
@@ -154,7 +154,7 @@ public class DefaultNetwork extends Manager<Network>
 				ConnectionImplementation unsecure = new ConnectionImplementation(client, false);
 				Connection secure = (s.isSecure() ? securize(unsecure, s.security()) : null);
 				
-				s.onAccept().trigger(secure == null ? unsecure : secure)
+				Manager.of(Executor.class).io(() -> s.onAccept().trigger(secure == null ? unsecure : secure))
 					.then(() -> onConnectable2(unsecure));
 			}
 			while( true );
@@ -213,59 +213,53 @@ public class DefaultNetwork extends Manager<Network>
 			SocketChannel channel = c.channel();
 			if( channel == null || !channel.isConnected() ) return;
 			
-			// TODO : decide if we do async IO reads. This increases the overhead (latency) but allows more parallel reads (throughput)
-			//key.interestOpsAnd(~SelectionKey.OP_READ);
-			//Manager.of(Executor.class).io(() -> 
-			//{
-				boolean ready = false;
-				boolean full = false;
-				try( TLS_Buffer bufferX = TLS_BufferPool.poll() ) //XX synchronized(buffer)
+			boolean ready = false;
+			boolean full = false;
+			try( TLS_Buffer bufferX = TLS_BufferPool.poll() )
+			{
+				ByteBuffer buffer = bufferX.get();
+				do
 				{
-					ByteBuffer buffer = bufferX.get();
-					do
+					int readCount = 0;
+					try
 					{
-						int readCount = 0;
-						try
-						{
-							do { readCount = channel.read(buffer); } while( readCount > 0 );
-						}
-						catch(Exception ex)
-						{
-							Manager.of(Logger.class).finest(Network.class, ex);
-							readCount = -1;
-						}
-						
-						full = (buffer.remaining() == 0);
-						if( buffer.position() > 0 )
-						{
-							buffer.flip();
-							
-							Hardware.RAM.waitForSpace(buffer.limit(), 0);
-							
-							byte[] data = new byte[buffer.limit()]; 
-							buffer.get(data);
-							bytesRead.add(data.length);
-							c.fifo.offer(data);
-							c.resetTimeout();
-							buffer.clear();
-							ready = true;
-						}
-						
-						if( readCount == -1 )
-						{
-							try { c.close(); } catch(Exception ex) { /* ignore */ };
-						}
+						do { readCount = channel.read(buffer); } while( readCount > 0 );
 					}
-					while(full);
+					catch(Exception ex)
+					{
+						Manager.of(Logger.class).finest(Network.class, ex);
+						readCount = -1;
+					}
+					
+					full = (buffer.remaining() == 0);
+					if( buffer.position() > 0 )
+					{
+						buffer.flip();
+						
+						Hardware.RAM.waitForSpace(buffer.limit(), 0);
+						
+						byte[] data = new byte[buffer.limit()]; 
+						buffer.get(data);
+						bytesRead.add(data.length);
+						c.fifo.offer(data);
+						c.resetTimeout();
+						buffer.clear();
+						ready = true;
+					}
+					
+					if( readCount == -1 )
+					{
+						try { c.close(); } catch(Exception ex) { /* ignore */ };
+					}
 				}
-				
-				if( ready )
-					c.onReady().trigger(c);
-			//}).then(() -> 
-			//{
-			//	key.interestOpsOr(SelectionKey.OP_READ);
-			//	selector.wakeup();
-			//});
+				while(full);
+			}
+			
+			if( ready )
+			{
+				// defer the processing in the normal executor space
+				Manager.of(Executor.class).normal(() -> c.onReady().trigger());
+			}
 		}
 		
 		private void onSelect(SelectionKey key)
@@ -323,7 +317,7 @@ public class DefaultNetwork extends Manager<Network>
 		{
 			return Manager.of(Executor.class).background(() ->
 			{
-				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Network Manager");
+				Thread.currentThread().setName("Background :: Network Manager");
 				try
 				{
 					selector = Selector.open();
@@ -373,17 +367,23 @@ public class DefaultNetwork extends Manager<Network>
 				.rule(Parameter.Rule.DIGIT)
 				.format(Parameter.Format.NUMBER)
 				.optional(true)
-				.defaultValue(Data.of(120000)))
-			.builder((data, instance) -> 
+				.defaultValue(120000))
+			.onCreate((data, instance) -> 
 			{
-				Monitor.addProbe("network", () ->
-				{
-					return Data.map()
-						.put("read", bytesRead.longValue())
-						.put("write", bytesWritten.longValue())
-						.put("connect", connectionsEstablished.longValue())
-						;
-				});
+				new Probe() {}
+					.template()
+					.summary("Network")
+					.description("This probe returns the cumulated total number of bytes read and written on the network. It also returns the cumulated number of established connections.")
+					.create()
+					.source(() ->
+					{
+						return Data.map()
+							.put("read", bytesRead.longValue())
+							.put("write", bytesWritten.longValue())
+							.put("connect", connectionsEstablished.longValue())
+							;
+					})
+					.name("network");
 				
 				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN ) 
 					((Implementation)instance).task = ((Implementation)instance).task();
@@ -424,57 +424,53 @@ public class DefaultNetwork extends Manager<Network>
 			finally
 			{
 				Manager.of(Timeout.class).remove(tracker);
-				onClose().trigger(this);
+				onClose().trigger();
 			}
 		}
 
-		private Callback<Connection> onReady = new Callback<>();
-		public Callback<Connection> onReady() { return onReady; }
+		private Callback<Void, Connection> onReady = new Callback<>(this);
+		public Callback<Void, Connection> onReady() { return onReady; }
 
 		public byte[] next() { return fifo.poll(); }
 		
 		public boolean hasNext() { return !fifo.isEmpty(); }
 
-		public Task<Void> write(ByteBuffer data)
+		public void write(ByteBuffer data)
 		{
-			// TODO : decide if we write IO async. This allows to free the processing thread faster but adds more latency due to context-switch.
-			//return Manager.of(Executor.class).io(() -> 
-			//{
-				try
-				{
-					while( !closed.get() && !connected.get() )
-						LockSupport.parkNanos(10_000_000);
-						
-					SocketChannel c = channel();
-					if( c == null ) throw new IllegalStateException("Connection is not established");
+			try
+			{
+				while( !closed.get() && !connected.get() )
+					LockSupport.parkNanos(10_000_000);
 					
-					synchronized(c)
+				SocketChannel c = channel();
+				if( c == null ) throw new IllegalStateException("Connection is not established");
+				
+				synchronized(c)
+				{
+					int count = 0;
+					while( data.hasRemaining() )
 					{
-						int count = 0;
-						while( data.hasRemaining() )
+						count = c.write(data);
+						if( count == 0 )
+							LockSupport.parkNanos(1_000_000);
+						else
 						{
-							count = c.write(data);
-							if( count == 0 )
-								LockSupport.parkNanos(1_000_000);
-							else
-							{
-								bytesWritten.add(count);
-								resetTimeout();
-							}
+							bytesWritten.add(count);
+							resetTimeout();
 						}
 					}
 				}
-				catch(IOException e)
-				{
-					try { close(); } catch(Exception ioe) { /* ignore */ }
-					throw new RuntimeException(e);
+			}
+			catch(IOException e)
+			{
+				try { close(); } catch(Exception ioe) { // ignore 
 				}
-			//});
-			return Task.completed(null);
+				throw new RuntimeException(e);
+			}
 		}
 
-		private Callback<Connection> onClose = new Callback<>();
-		public Callback<Connection> onClose() { return onClose; }
+		private Callback<Void, Connection> onClose = new Callback<>(this);
+		public Callback<Void, Connection> onClose() { return onClose; }
 		
 		private AtomicReference<SocketChannel> channel = new AtomicReference<>();
 		public SocketChannel channel() { return channel.get(); }
@@ -539,7 +535,7 @@ public class DefaultNetwork extends Manager<Network>
 				}
 			};
 			
-			tracker.onExpire().then((c) ->
+			tracker.onExpire().then((c, _tracker) ->
 			{
 				SocketChannel channel = c.channel();
 
@@ -575,8 +571,8 @@ public class DefaultNetwork extends Manager<Network>
 		public SecureConnectionImplementation(Connection source, SecurityOptions options)
 		{
 			this.source = source; 
-			this.source.onClose().then(Callback.once((c) -> this.onClose().trigger(this)));
-			this.source.onReady().then((c) -> this.read());
+			this.source.onClose().then(Callback.once((x, c) -> this.onClose().trigger()));
+			this.source.onReady().then((x, c) -> this.read());
 			
 			ssl = Network.sslEngine(options, source.isClientMode());
 			if( source.isClientMode() )
@@ -659,8 +655,8 @@ public class DefaultNetwork extends Manager<Network>
 
 		public boolean isClientMode() { return source.isClientMode(); }
 
-		private Callback<Connection> onReady = new Callback<>();
-		public Callback<Connection> onReady() { return onReady; }
+		private Callback<Void, Connection> onReady = new Callback<>(this);
+		public Callback<Void, Connection> onReady() { return onReady; }
 
 		public byte[] next() { return fifo.poll(); }
 		
@@ -789,7 +785,8 @@ public class DefaultNetwork extends Manager<Network>
 							}
 							decrypted.get().clear();
 
-							onReady().trigger(this);
+							// trigger in the normal executor space
+							Manager.of(Executor.class).normal(() -> onReady().trigger());
 							
 							// loop to check for another frame
 							break;
@@ -809,10 +806,8 @@ public class DefaultNetwork extends Manager<Network>
 			} while( wasok );
 		}
 		
-		public Task<Void> write(ByteBuffer data)
+		public void write(ByteBuffer data)
 		{
-			Task<Void> io = null;
-			
 			while( handshaking.get() )
 				LockSupport.parkNanos(10_000_000);
 
@@ -820,8 +815,6 @@ public class DefaultNetwork extends Manager<Network>
 			{
 				try
 				{
-					if( io != null ) io.await();
-					
 					try (TLS_Buffer buffer = TLS_BufferPool.poll() )
 					{
 						ByteBuffer encrypted = buffer.get();
@@ -838,16 +831,14 @@ public class DefaultNetwork extends Manager<Network>
 								task.run();
 						}
 						
-						io = source.write(encrypted.flip());
+						source.write(encrypted.flip());
 					}
 				}
 				catch(Exception e) { throw new RuntimeException(e); }
 			}
-			
-			return io == null ? Task.completed(null) : io;
 		}
 
-		public Callback<Connection> onClose() { return source.onClose(); }
+		public Callback<Void, Connection> onClose() { return source.onClose(); }
 		
 		public void timeout(long ms) { source.timeout(ms); }
 		
@@ -881,15 +872,15 @@ public class DefaultNetwork extends Manager<Network>
 			}
 			finally
 			{
-				onClose().trigger(this);
+				onClose().trigger();
 			}
 		}
 
-		private Callback<Connection> onAccept = new Callback<>();
-		public Callback<Connection> onAccept() { return onAccept; }
+		private Callback<Connection, Server> onAccept = new Callback<>(this);
+		public Callback<Connection, Server> onAccept() { return onAccept; }
 
-		private Callback<Server> onClose = new Callback<>();
-		public Callback<Server> onClose() { return onClose; }
+		private Callback<Void, Server> onClose = new Callback<>(this);
+		public Callback<Void, Server> onClose() { return onClose; }
 		
 		private AtomicReference<ServerSocketChannel> channel = new AtomicReference<>();
 		public ServerSocketChannel channel() { return channel.get(); }

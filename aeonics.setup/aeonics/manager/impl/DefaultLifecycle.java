@@ -59,9 +59,9 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 	
 			try
 			{
-				before(phase).trigger(null).await();
-				on(phase).trigger(null).await();
-				after(phase).trigger(null).await();
+				before(phase).trigger(phase);
+				on(phase).trigger(phase);
+				after(phase).trigger(phase);
 				
 				long end = System.currentTimeMillis();
 				Manager.of(Logger.class).fine(Lifecycle.class, "Phase " + phase + " completed in " + (end-start) + "ms");
