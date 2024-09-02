@@ -73,16 +73,19 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				Data all = Data.map();
 				for( Consumer<Data> handler : createCallback )
 				{
-					String module = handler.getClass().getModule().getName();
-					Data data = all.get(module);
-					if( !data.isMap() )
-					{
-						data = Data.map();
-						all.put(module, data);
-					}
-					
 					try
 					{
+						if( !(handler instanceof ModuleAwareBiConsumer) )
+							throw new IllegalStateException("Invalid snapshot restore handler");
+						
+						String module = ((ModuleAwareBiConsumer)handler).origin().getModule().getName();
+						Data data = all.get(module);
+						if( !data.isMap() )
+						{
+							data = Data.map();
+							all.put(module, data);
+						}
+						
 						localSnapshot(handler, data);
 					}
 					catch(Exception e)
@@ -122,17 +125,20 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				Data all = Data.map();
 				for( Consumer<Data> handler : restoreCallback )
 				{
-					String module = handler.getClass().getModule().getName();
-					if( !files.contains(module + ".json") ) continue;
-					Data data = all.get(module);
-					if( !data.isMap() )
-					{
-						data = store.getData(snapshot + "/" + module + ".json");
-						all.put(module, data);
-					}
-					
 					try
 					{
+						if( !(handler instanceof ModuleAwareBiConsumer) )
+							throw new IllegalStateException("Invalid snapshot restore handler");
+						
+						String module = ((ModuleAwareBiConsumer)handler).origin().getModule().getName();
+						if( !files.contains(module + ".json") ) continue;
+						Data data = all.get(module);
+						if( !data.isMap() )
+						{
+							data = store.getData(snapshot + "/" + module + ".json");
+							all.put(module, data);
+						}
+						
 						localRestore(handler, data);
 					}
 					catch(Exception e)

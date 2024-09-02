@@ -105,6 +105,8 @@ public class Main extends Plugin
 	private void beforeLoad()
 	{
 		// basic entities
+		Factory.add(new Origin.Basic());
+		Factory.add(new Origin.Scheduled());
 		Factory.add(new Probe());
 		Factory.add(new Queue());
 		Factory.add(new Storage.File());
@@ -201,6 +203,7 @@ public class Main extends Plugin
 		{
 			setupLoggerFlow();
 			setupMonitorFlow();
+			Manager.of(Config.class).set("aeonics.setup", "initialized", Data.of(true));
 		}
 		
 		new Probe() {}
@@ -234,7 +237,7 @@ public class Main extends Plugin
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
 			
-			User.Type user = new User().template().create(Data.map().put("__id", "admin").put("active", true))
+			User.Type user = new User().template().create(Data.map().put("login", "admin").put("active", true))
 				.name("Admin User")
 				.addRelation("roles", Role.SUPERADMIN)
 				.addRelation("groups", new Group().template().create()
