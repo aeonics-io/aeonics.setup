@@ -6,10 +6,8 @@ import java.math.BigInteger;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,9 +21,6 @@ import javax.crypto.spec.SecretKeySpec;
 import aeonics.data.Data;
 import aeonics.entity.Registry;
 import aeonics.entity.Storage;
-import aeonics.entity.security.Policy;
-import aeonics.entity.security.Provider;
-import aeonics.entity.security.Role;
 import aeonics.entity.security.Token;
 import aeonics.entity.security.User;
 import aeonics.manager.Config;
@@ -196,101 +191,6 @@ public class DefaultSecurity extends Manager<Security>
 				hex[i*2+1] = hexArray[h & 0x0F];
 			}
 			return new String(hex);
-		}
-		
-		// =========================================
-		//
-		// USER / ALLOWED / DENIED
-		//
-		// =========================================
-		
-		public List<Provider.Type> providers(String user)
-		{
-			List<Provider.Type> providers = new ArrayList<>();
-			for( Provider.Type p : Registry.of(Provider.class) )
-			{
-				try
-				{
-					if( p.active() && p.supports(user) ) providers.add(p);
-				}
-				catch(Exception t)
-				{
-					Manager.of(Logger.class).warning(Security.class, t);
-				}
-			}
-			return providers;
-		}
-		
-		public User.Type authenticate(Provider.Type provider, Data context)
-		{
-			if( provider == null || !provider.active() ) return User.ANONYMOUS;
-			
-			try
-			{
-				User.Type user = provider.authenticate(context);
-				if( user == null ) return User.ANONYMOUS;
-				return user;
-			}
-			catch(Exception t)
-			{
-				Manager.of(Logger.class).warning(Security.class, t);
-			}
-			return User.ANONYMOUS;
-		}
-		
-		public boolean granted(User.Type user, String scope, Data context)
-		{
-			if( user == null ) return false;
-			if( user == User.SYSTEM ) return true;
-			if( user.hasRole(Role.SUPERADMIN) ) return true;
-			
-			return !isExplicitlyDenied(user, scope, context) && isExplicitlyAllowed(user, scope, context);
-		}
-		
-		public boolean isExplicitlyDenied(User.Type user, String scope, Data context)
-		{
-			if( user == null || scope == null ) return false;
-			if( user == User.SYSTEM ) return false;
-			if( user.hasRole(Role.SUPERADMIN) ) return false;
-			
-			try
-			{
-				for( Policy.Type policy : Registry.of(Policy.class) )
-				{
-					if( !policy.valueOf("scope").equals(scope) ) continue;
-					if( policy.isDenied(user, context) )
-						return true;
-				}
-				return false;
-			}
-			catch(Exception e)
-			{
-				Manager.of(Logger.class).warning(Security.class, e);
-			}
-			return false;
-		}
-		
-		public boolean isExplicitlyAllowed(User.Type user, String scope, Data context)
-		{
-			if( user == null || scope == null ) return false;
-			if( user == User.SYSTEM ) return true;
-			if( user.hasRole(Role.SUPERADMIN) ) return true;
-			
-			try
-			{
-				for( Policy.Type policy : Registry.of(Policy.class) )
-				{
-					if( !policy.valueOf("scope").equals(scope) ) continue;
-					if( policy.isAllowed(user, context) )
-						return true;
-				}
-				return false;
-			}
-			catch(Exception e)
-			{
-				Manager.of(Logger.class).warning(Security.class, e);
-			}
-			return false;
 		}
 		
 		// =========================================

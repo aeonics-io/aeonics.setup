@@ -98,7 +98,7 @@ public class DefaultNetwork extends Manager<Network>
 				channel = ServerSocketChannel.open();
 				try { channel.setOption(StandardSocketOptions.SO_REUSEADDR, true); } catch(Exception e) { Manager.of(Logger.class).finest(Network.class, "Socket option SO_REUSEADDR could not be set for {}:{}", localAddress, localPort); }
 				try { channel.setOption(StandardSocketOptions.SO_REUSEPORT, true); } catch(Exception e) { Manager.of(Logger.class).finest(Network.class, "Socket option SO_REUSEPORT could not be set for {}:{}", localAddress, localPort); }
-				channel.bind(new InetSocketAddress(localAddress, localPort), 50);
+				channel.bind(new InetSocketAddress(localAddress, localPort), Manager.of(Config.class).get(Network.class, "backlog").asInt());
 				channel.configureBlocking(false);
 				
 				ServerImplementation s = new ServerImplementation(channel, options);

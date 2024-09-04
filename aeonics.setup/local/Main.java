@@ -166,6 +166,15 @@ public class Main extends Plugin
 			.rule(Parameter.Rule.PATH)
 			.optional(false));
 		
+		c.declare(Network.class, new Parameter("backlog")
+			.summary("Socket Backlog")
+			.description("The maximum number of pending connections to be accepted by listenning server sockets.")
+			.format(Parameter.Format.NUMBER)
+			.rule(Parameter.Rule.DIGIT)
+			.optional(true)
+			.min(1).max(5)
+			.defaultValue(50));
+		
 		c.declare("aeonics.setup", new Parameter("initialized")
 			.summary("Default setup has been initialized")
 			.description("This parameter defines if the default setup has already been initialized (true) or if it should done when starting the config phase (false)."
