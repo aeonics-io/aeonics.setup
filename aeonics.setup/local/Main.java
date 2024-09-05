@@ -35,12 +35,17 @@ public class Main extends Plugin
 	{
 		// allow the user to provide the default hash/salt for the admin password
 		adminHash = System.getProperty("AEONICS_SECURITY_ADMIN_HASH");
+		if( adminHash == null || adminHash.isBlank() ) adminHash = System.getenv("AEONICS_SECURITY_ADMIN_HASH");
 		if( adminHash == null || adminHash.isBlank() ) adminHash = null;
 		else System.clearProperty("AEONICS_SECURITY_ADMIN_HASH");
+		
 		adminSalt = System.getProperty("AEONICS_SECURITY_ADMIN_SALT");
+		if( adminSalt == null || adminSalt.isBlank() ) adminSalt = System.getenv("AEONICS_SECURITY_ADMIN_SALT");
 		if( adminSalt == null || adminSalt.isBlank() ) adminSalt = null;
 		else System.clearProperty("AEONICS_SECURITY_ADMIN_SALT");
+		
 		vaultSalt = System.getProperty("AEONICS_SECURITY_VAULT_SALT");
+		if( vaultSalt == null || vaultSalt.isBlank() ) vaultSalt = System.getenv("AEONICS_SECURITY_VAULT_SALT");
 		if( vaultSalt == null || vaultSalt.isBlank() ) vaultSalt = null;
 		else System.clearProperty("AEONICS_SECURITY_VAULT_SALT");
 	}
