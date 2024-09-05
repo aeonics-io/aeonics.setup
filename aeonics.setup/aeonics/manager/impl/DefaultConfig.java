@@ -65,20 +65,21 @@ public class DefaultConfig extends Manager<Config>
 			return store.containsKey(key);
 		}
 
-		public Data set(String type, String name, Data value)
+		public Data set(String type, String name, Object value)
 		{
 			Objects.requireNonNull(type);
 			Objects.requireNonNull(name);
 			
+			Data data = Data.of(value);
 			synchronized(store)
 			{
 				String key = implodeName(type, name);
 				Tuple<Data, Tuple<Callback<Tuple<String, Data>, Config>, Parameter>> v = store.computeIfAbsent(key, (k) -> new Tuple<>(null, new Tuple<>(null, new Parameter(name.toLowerCase(Locale.ROOT).replace('_', '.')).optional(true))));
-				if( !v.b.b.validate(value) ) throw new IllegalArgumentException("Invalid value for parameter " + key);
+				if( !v.b.b.validate(data) ) throw new IllegalArgumentException("Invalid value for parameter " + key);
 				Data old = v.a;
-				v.a = value;
+				v.a = data;
 				
-				if( v.b.a != null ) v.b.a.trigger(Tuple.of(key, value));
+				if( v.b.a != null ) v.b.a.trigger(Tuple.of(key, data));
 				return old;
 			}
 		}
@@ -174,7 +175,7 @@ public class DefaultConfig extends Manager<Config>
 				{
 					String key = entry.getKey().replaceAll("[^a-zA-Z0-9_.-]", "");
 					if( !key.isBlank() )
-						instance.set(key, Data.of(entry.getValue()));
+						instance.set(key, entry.getValue());
 				}
 				
 				for( Map.Entry<Object, Object> entry : System.getProperties().entrySet() )

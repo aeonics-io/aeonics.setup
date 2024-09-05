@@ -211,13 +211,13 @@ public class Main extends Plugin
 	private void onConfig()
 	{
 		// enable monitoring
-		Manager.of(Config.class).set(Monitor.class, "enabled", Data.of(true));
+		Manager.of(Config.class).set(Monitor.class, "enabled", true);
 		
 		if( !Manager.of(Config.class).get("aeonics.setup", "initialized").asBool() )
 		{
 			setupLoggerFlow();
 			setupMonitorFlow();
-			Manager.of(Config.class).set("aeonics.setup", "initialized", Data.of(true));
+			Manager.of(Config.class).set("aeonics.setup", "initialized", true);
 		}
 		
 		new Probe() {}
@@ -369,7 +369,7 @@ public class Main extends Plugin
 		if( !data.isEmpty("registry") )
 		{
 			data.get("registry").entrySet().forEach((entry) -> {
-				entry.getValue().forEach((entity) -> Factory.build(entity));
+				entry.getValue().forEach((entity) -> Factory.create(entity));
 			});
 		}
 	}
@@ -434,7 +434,7 @@ public class Main extends Plugin
 		queue.addRelation("destinations", destination, Data.map().put("input", "data"));
 		
 		Manager.of(Config.class).watch(Monitor.class, "window", (key, value) -> { 
-			Factory.modify(origin, Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (value.asLong() / 1000))); 
+			Factory.update(origin, Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (value.asLong() / 1000))); 
 		});
 	}
 }
