@@ -22,7 +22,6 @@ import aeonics.manager.impl.DefaultVault;
 import aeonics.template.Channel;
 import aeonics.template.Factory;
 import aeonics.template.Parameter;
-import aeonics.util.Callback;
 import aeonics.util.Hardware;
 
 public class Main extends Plugin
@@ -59,7 +58,7 @@ public class Main extends Plugin
 		{
 			try
 			{
-				T instance = item.getConstructor().newInstance().template().create(parameters);
+				T instance = item.getConstructor().newInstance().template().create(Data.map().put("parameters", parameters));
 				instance.name(type.getSimpleName() + " Manager");
 				Manager.set(type, instance);
 			}
@@ -87,21 +86,21 @@ public class Main extends Plugin
 			Manager.replace(Lifecycle.class, instance);
 		}
 		
-		Lifecycle.before(Phase.LOAD, Callback.once(() -> beforeLoad()));
-		Lifecycle.on(Phase.LOAD, Callback.once(() -> onLoad()));
-		Lifecycle.after(Phase.LOAD, Callback.once(() -> afterLoad()));
+		Lifecycle.before(Phase.LOAD, this::beforeLoad);
+		Lifecycle.on(Phase.LOAD, this::onLoad);
+		Lifecycle.after(Phase.LOAD, this::afterLoad);
 		
-		Lifecycle.before(Phase.CONFIG, Callback.once(() -> beforeConfig()));
-		Lifecycle.on(Phase.CONFIG, Callback.once(() -> onConfig()));
-		Lifecycle.after(Phase.CONFIG, Callback.once(() -> afterConfig()));
+		Lifecycle.before(Phase.CONFIG, this::beforeConfig);
+		Lifecycle.on(Phase.CONFIG, this::onConfig);
+		Lifecycle.after(Phase.CONFIG, this::afterConfig);
 		
-		Lifecycle.before(Phase.RUN, Callback.once(() -> beforeRun()));
-		Lifecycle.on(Phase.RUN, Callback.once(() -> onRun()));
-		Lifecycle.after(Phase.RUN, Callback.once(() -> afterRun()));
+		Lifecycle.before(Phase.RUN, this::beforeRun);
+		Lifecycle.on(Phase.RUN, this::onRun);
+		Lifecycle.after(Phase.RUN, this::afterRun);
 		
-		Lifecycle.before(Phase.SHUTDOWN, Callback.once(() -> beforeShutdown()));
-		Lifecycle.on(Phase.SHUTDOWN, Callback.once(() -> onShutdown()));
-		Lifecycle.after(Phase.SHUTDOWN, Callback.once(() -> afterShutdown()));
+		Lifecycle.before(Phase.SHUTDOWN, this::beforeShutdown);
+		Lifecycle.on(Phase.SHUTDOWN, this::onShutdown);
+		Lifecycle.after(Phase.SHUTDOWN, this::afterShutdown);
 		
 		Snapshot.onSnapshot(this::onSnapshot);
 		Snapshot.onRestore(this::onRestore);
@@ -109,39 +108,19 @@ public class Main extends Plugin
 	
 	private void beforeLoad()
 	{
-		// basic entities
-		Factory.add(new Origin.Basic());
-		Factory.add(new Origin.Scheduled());
-		Factory.add(new Probe());
-		Factory.add(new Queue());
-		Factory.add(new Storage.File());
-		Factory.add(new Storage.Memory());
-		Factory.add(new Topic());
-		
-		// security entities
-		Factory.add(new Group());
-		Factory.add(new Policy.Allow());
-		Factory.add(new Policy.Deny());
-		Factory.add(new Policy.TargetedAllow());
-		Factory.add(new Policy.TargetedDeny());
-		Factory.add(new Provider.Local());
-		Factory.add(new Role());
-		Factory.add(new Rule.And());
-		Factory.add(new Rule.AskProviders());
-		Factory.add(new Rule.MatchAll());
-		Factory.add(new Rule.MatchAttribute());
-		Factory.add(new Rule.MatchContext());
-		Factory.add(new Rule.MatchNone());
-		Factory.add(new Rule.Or());
-		Factory.add(new Rule.Not());
-		Factory.add(new Rule.Role());
-		Factory.add(new Rule.Xor());
-		Factory.add(new User());
-		
 		Factory.add(new Console());
 		
-		// managers
 		manager(Config.class, DefaultConfig.class, false, null);
+		
+		if( Manager.of(Executor.class) == Executor.SYNCHRONOUS )
+		{
+			Executor instance = new DefaultExecutor().template().create().name("Executor Manager");
+			Manager.replace(Executor.class, instance);
+		}
+	}
+	
+	private void onLoad()
+	{
 		manager(Snapshot.class, DefaultSnapshot.class, false, null);
 		manager(Security.class, DefaultSecurity.class, false, null);
 		manager(Vault.class, DefaultVault.class, false, Data.map().put("salt", vaultSalt));
@@ -153,23 +132,7 @@ public class Main extends Plugin
 		
 		vaultSalt = null;
 		
-		if( Manager.of(Executor.class) == Executor.SYNCHRONOUS )
-		{
-			Executor instance = new DefaultExecutor().template().create().name("Executor Manager");
-			Manager.replace(Executor.class, instance);
-		}
-	}
-	
-	private void onLoad()
-	{
 		Config c = Manager.of(Config.class);
-		
-		c.declare(Plugin.class, new Parameter("path")
-			.summary("Plugins directory")
-			.description("The path to the plugins directory. This parameter must be set in the command line.")
-			.format(Parameter.Format.TEXT)
-			.rule(Parameter.Rule.PATH)
-			.optional(false));
 		
 		c.declare(Network.class, new Parameter("backlog")
 			.summary("Socket Backlog")
@@ -251,7 +214,7 @@ public class Main extends Plugin
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
 			
-			User.Type user = new User().template().create(Data.map().put("login", "admin").put("active", true))
+			User.Type user = new User().template().create(Data.map().put("parameters", Data.map().put("login", "admin").put("active", true)))
 				.name("Admin User")
 				.addRelation("roles", Role.SUPERADMIN)
 				.addRelation("groups", new Group().template().create()
@@ -285,7 +248,7 @@ public class Main extends Plugin
 			if( provider.join(context, user) != user )
 				Manager.of(Logger.class).severe(Security.class, "Default user could not join local provider");
 
-			new Policy.Allow().template().create(Data.map().put("scope", "topic"))
+			new Policy.Allow().template().create(Data.map().put("parameters", Data.map().put("scope", "topic")))
 				.name("Allow everyone to use any topic")
 				.addRelation("rule", new Rule.MatchAll().template().create().name("Match all"))
 				.<Policy.Type>cast()
@@ -408,7 +371,7 @@ public class Main extends Plugin
 				.description("System probes"))
 			.summary("Monitoring data origin")
 			.description("This origin entity collects monioring metrics at the interval defined by the monitor manager and feeds them as data in the system.")
-			.create(Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (Manager.of(Config.class).get(Monitor.class, "window").asLong() / 1000)))
+			.create(Data.map().put("parameters", Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (Manager.of(Config.class).get(Monitor.class, "window").asLong() / 1000))))
 			.name("Monitor input");
 		origin
 			.<Origin.Scheduled.Type>cast()
