@@ -331,6 +331,10 @@ public class Main extends Plugin
 		
 		if( !data.isEmpty("registry") )
 		{
+			// first clear all non-internal entities
+			Registry.all().forEach(r -> r.clear(e -> !e.internal()));
+			
+			// then populate
 			data.get("registry").entrySet().forEach((entry) -> {
 				entry.getValue().forEach((entity) -> Factory.create(entity));
 			});

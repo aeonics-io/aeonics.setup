@@ -1,5 +1,9 @@
 package aeonics.manager.impl;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Collection;
@@ -8,6 +12,9 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import aeonics.data.Data;
 import aeonics.entity.Storage;
@@ -171,6 +178,72 @@ public class DefaultSnapshot extends Manager<Snapshot>
 		{
 			if( store == null ) return false;
 			return store.tree("").contains(snapshot + (snapshot.endsWith("/") ? "" : "/"));
+		}
+		
+		public void upload(byte[] snapshot)
+		{
+			try( ByteArrayInputStream bais = new ByteArrayInputStream(snapshot) )
+			{
+				String snapshotName = null;
+				ZipEntry ze;
+				
+				// first pass : check integrity and content
+				try( ZipInputStream zip = new ZipInputStream(bais) )
+				{	
+					while( (ze = zip.getNextEntry()) != null )
+					{
+						Path p = Paths.get(ze.getName()).normalize();
+						if( p.getNameCount() < 2 )
+						{
+							if( !ze.isDirectory() ) throw new IllegalArgumentException("The snapshot must contain only the root snapshot folder and no extra files on the side");
+							if( snapshotName != null ) throw new IllegalArgumentException("The snapshot can only contain one root folder");
+							snapshotName = p.toString();
+						}
+					}
+					
+					if( snapshotName == null ) 
+						throw new IllegalArgumentException("The snapshot must contain one root folder with the snapshot content");
+					if( !snapshotName.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}Z_[a-zA-Z0-9]*") )
+						throw new IllegalArgumentException("The snapshot root folder name is not valid");
+					if( exists(snapshotName) )
+						throw new IllegalArgumentException("Duplicate snapshot name. Remove the old one before uploading.");
+				}
+				
+				bais.reset();
+				
+				// second pass : copy to storage
+				try( ZipInputStream zip = new ZipInputStream(bais) )
+				{
+					while( (ze = zip.getNextEntry()) != null )
+					{
+						Path p = Paths.get(ze.getName()).normalize();
+						if( p.getNameCount() < 2 || ze.isDirectory() ) continue;
+						
+						store.put(p.toString(), zip.readAllBytes());
+					}
+				}
+			}
+			catch(Exception e) { throw new RuntimeException(e); }
+		}
+		
+		public byte[] download(String name)
+		{
+			if( store == null || !exists(name) ) throw new IllegalArgumentException("Invalid snapshot");
+			
+			ByteArrayOutputStream file = new ByteArrayOutputStream();
+			try( ZipOutputStream zip = new ZipOutputStream(file) )
+			{
+				zip.putNextEntry(new ZipEntry(name + "/"));
+				for( String path : store.list(name + "/") )
+				{
+					zip.putNextEntry(new ZipEntry(path));
+					zip.write(store.get(path));
+				}
+				zip.finish();
+			}
+			catch(Exception e) { throw new RuntimeException(e); }
+			
+			return file.toByteArray();
 		}
 
 		public String latest() 

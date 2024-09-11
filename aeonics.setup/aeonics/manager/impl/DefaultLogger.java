@@ -77,7 +77,7 @@ public class DefaultLogger extends Manager<Logger>
 				.summary("The log level")
 				.description("The log level is a number between 0 (log everything) and 1000 (log only critical errors). Only the logs with a level above the"
 					+ "defined value will actually be logged, others will be ignored.")
-				.rule(Parameter.Rule.DIGIT)
+				.rule(Parameter.Rule.INTEGER)
 				.format(Parameter.Format.NUMBER)
 				.optional(true)
 				.defaultValue(700))
