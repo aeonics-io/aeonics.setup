@@ -325,7 +325,8 @@ public class Main extends Plugin
 		{
 			Config c = Manager.of(Config.class);
 			data.get("config").entrySet().forEach((entry) -> {
-				c.set(entry.getKey(), entry.getValue());
+				try { c.set(entry.getKey(), entry.getValue()); }
+				catch(Exception e) { Manager.of(Logger.class).config(Snapshot.class, e); }
 			});
 		}
 		
@@ -336,7 +337,10 @@ public class Main extends Plugin
 			
 			// then populate
 			data.get("registry").entrySet().forEach((entry) -> {
-				entry.getValue().forEach((entity) -> Factory.create(entity));
+				entry.getValue().forEach((entity) -> {
+					try { Factory.create(entity); }
+					catch(Exception e) { Manager.of(Logger.class).config(Snapshot.class, e); }
+				});
 			});
 		}
 	}

@@ -226,7 +226,7 @@ public class DefaultSecurity extends Manager<Security>
 		
 		public Token authenticate(String token, boolean reset)
 		{
-			if( token == null ) return null;
+			if( token == null || token.isBlank() ) return null;
 			
 			try
 			{

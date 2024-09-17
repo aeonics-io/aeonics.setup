@@ -15,6 +15,7 @@ import aeonics.util.Callback;
 import aeonics.util.StringUtils;
 import aeonics.util.Tuples.Tuple;
 import aeonics.util.Functions.BiConsumer;
+import aeonics.util.Json;
 
 public class DefaultConfig extends Manager<Config>
 {
@@ -75,6 +76,10 @@ public class DefaultConfig extends Manager<Config>
 			{
 				String key = implodeName(type, name);
 				Tuple<Data, Tuple<Callback<Tuple<String, Data>, Config>, Parameter>> v = store.computeIfAbsent(key, (k) -> new Tuple<>(null, new Tuple<>(null, new Parameter(name.toLowerCase(Locale.ROOT).replace('_', '.')).optional(true))));
+				
+				if( v.b.b.format().equals(Parameter.Format.JSON) && data.isString() )
+					data = Json.decode(data.asString());
+					
 				if( !v.b.b.validate(data) ) throw new IllegalArgumentException("Invalid value for parameter " + key);
 				Data old = v.a;
 				v.a = data;
