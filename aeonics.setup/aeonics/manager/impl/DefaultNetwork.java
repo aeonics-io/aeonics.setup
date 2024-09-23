@@ -15,10 +15,13 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 import javax.net.ssl.SSLEngine;
@@ -61,8 +64,8 @@ public class DefaultNetwork extends Manager<Network>
 		
 		public Connection client(String remoteAddress, int remotePort, SecurityOptions options) throws IOException
 		{
-			while( !initialized.get() )
-				LockSupport.parkNanos(50_000_000);
+			try { initialized.await(); }
+			catch(InterruptedException e) { throw new RuntimeException(e); }
 			
 			SocketChannel channel = null;
 			try
@@ -89,8 +92,8 @@ public class DefaultNetwork extends Manager<Network>
 
 		public Server server(String localAddress, int localPort, SecurityOptions options) throws IOException
 		{
-			while( !initialized.get() )
-				LockSupport.parkNanos(50_000_000);
+			try { initialized.await(); }
+			catch(InterruptedException e) { throw new RuntimeException(e); }
 			
 			ServerSocketChannel channel = null;
 			try
@@ -124,7 +127,7 @@ public class DefaultNetwork extends Manager<Network>
 		
 		public void refresh()
 		{
-			if( initialized.get() ) selector.wakeup();
+			if( initialized.getCount() == 0 ) selector.wakeup();
 		}
 		
 		public void close() { task.cancel(); }
@@ -186,7 +189,7 @@ public class DefaultNetwork extends Manager<Network>
 				try { channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true); } catch(Exception e) { Manager.of(Logger.class).finest(Network.class, "Socket option SO_KEEPALIVE could not be set for {}:{} - {}:{}", localAddress, localPort, remoteAddress, remotePort); }
 				
 				Manager.of(Logger.class).finer(Network.class, "Connection established between {}:{} and {}:{}", localAddress, localPort, remoteAddress, remotePort);
-				c.connected.set(true);
+				c.connected.countDown();
 				
 				SelectionKey key = channel.register(selector, SelectionKey.OP_READ, c);
 				selector.wakeup();
@@ -249,7 +252,12 @@ public class DefaultNetwork extends Manager<Network>
 					
 					if( readCount == -1 )
 					{
-						try { c.close(); } catch(Exception ex) { /* ignore */ };
+						// to allow half-closed connections and still allow write,
+						// we do not close the connection here, instead we unregister 
+						// the read selector
+						key.cancel();
+						
+						//try { c.close(); } catch(Exception ex) { /* ignore */ };
 					}
 				}
 				while(full);
@@ -311,7 +319,8 @@ public class DefaultNetwork extends Manager<Network>
 		//
 		// =========================================
 		
-		private AtomicBoolean initialized = new AtomicBoolean(false);
+		
+		private final CountDownLatch initialized = new CountDownLatch(1);
 		private Task<Void> task = null;
 		private Task<Void> task()
 		{
@@ -321,7 +330,7 @@ public class DefaultNetwork extends Manager<Network>
 				try
 				{
 					selector = Selector.open();
-					initialized.set(true);
+					initialized.countDown();
 					
 					while( !Thread.currentThread().isInterrupted() )
 						selector.select(this::onSelect);
@@ -401,7 +410,7 @@ public class DefaultNetwork extends Manager<Network>
 	private static class ConnectionImplementation implements Connection
 	{
 		ConcurrentLinkedQueue<byte[]> fifo = new ConcurrentLinkedQueue<byte[]>();
-		private AtomicBoolean connected = new AtomicBoolean(false);
+		private CountDownLatch connected = new CountDownLatch(1);
 		private AtomicBoolean closed = new AtomicBoolean(false);
 		
 		public ConnectionImplementation(SocketChannel channel, boolean clientMode)
@@ -439,8 +448,10 @@ public class DefaultNetwork extends Manager<Network>
 		{
 			try
 			{
-				while( !closed.get() && !connected.get() )
-					LockSupport.parkNanos(10_000_000);
+				if( closed.get() ) throw new IOException("Connection closed");
+				try { connected.await(); }
+				catch(InterruptedException e) { throw new RuntimeException(e); }
+				if( closed.get() ) throw new IOException("Connection closed");
 					
 				SocketChannel c = channel();
 				if( c == null ) throw new IllegalStateException("Connection is not established");
@@ -452,7 +463,13 @@ public class DefaultNetwork extends Manager<Network>
 					{
 						count = c.write(data);
 						if( count == 0 )
+						{
+							/* In this case, we should ideally have the WRITE selector that tell us when the channel is ready
+							 * but this is cumbersome to keep track and wait/signal this. So instead we add a fixed delay.
+							 * This is not good for latency, but easier to manage.
+							 */
 							LockSupport.parkNanos(1_000_000);
+						}
 						else
 						{
 							bytesWritten.add(count);
@@ -463,8 +480,7 @@ public class DefaultNetwork extends Manager<Network>
 			}
 			catch(IOException e)
 			{
-				try { close(); } catch(Exception ioe) { // ignore 
-				}
+				try { close(); } catch(Exception ioe) { /* ignore */ }
 				throw new RuntimeException(e);
 			}
 		}
@@ -563,7 +579,7 @@ public class DefaultNetwork extends Manager<Network>
 	{
 		private ConcurrentLinkedQueue<byte[]> fifo = new ConcurrentLinkedQueue<byte[]>();
 		private Connection source;
-		private AtomicBoolean handshaking = new AtomicBoolean(true);
+		private CompletionLock handshaking = new CompletionLock();
 		private SSLEngine ssl;
 		
 		private static final ByteBuffer EMPTY = ByteBuffer.allocate(0);
@@ -585,7 +601,7 @@ public class DefaultNetwork extends Manager<Network>
 		private void handshake(ByteBuffer read) throws Exception
 		{
 			SSLEngineResult status = null;
-			
+
 			handshakeloop: while( true )
 			{
 				HandshakeStatus step = (status == null ? ssl.getHandshakeStatus() : status.getHandshakeStatus());
@@ -607,9 +623,9 @@ public class DefaultNetwork extends Manager<Network>
 						
 						// prevent rejoin session because it keeps a cache for almost never used rejoin
 						ssl.getSession().invalidate();
-						handshaking.set(false);
-
-						if( read != null && read.hasRemaining() )
+						handshaking.complete();
+						
+						//if( read != null && read.hasRemaining() )
 						{
 							if( reading.get() )
 								read3(); // continue with remaining buffer
@@ -640,8 +656,12 @@ public class DefaultNetwork extends Manager<Network>
 					{
 						if( read == null || !read.hasRemaining() )
 							break handshakeloop;
-						else
-							status = ssl.unwrap(read, EMPTY);
+						
+						int position = read.position();
+						status = ssl.unwrap(read, EMPTY);
+						
+						if( position == read.position() && read.hasRemaining() ) // we need more data
+							break handshakeloop;
 						break;
 					}
 					default: throw new SSLHandshakeException("Unsupported handshake status: " + ssl.getHandshakeStatus());
@@ -741,7 +761,7 @@ public class DefaultNetwork extends Manager<Network>
 		
 		private void read3() throws Exception
 		{
-			if( handshaking.get() )
+			if( !handshaking.isComplete() )
 			{
 				handshake(encrypted.get());
 				return;
@@ -806,35 +826,47 @@ public class DefaultNetwork extends Manager<Network>
 			} while( wasok );
 		}
 		
+		private final ReentrantLock writing = new ReentrantLock(true);
 		public void write(ByteBuffer data)
 		{
-			while( handshaking.get() )
-				LockSupport.parkNanos(10_000_000);
-
-			while( data.hasRemaining() )
+			writing.lock();
+			
+			try
 			{
-				try
+				while( data.hasRemaining() )
 				{
-					try (TLS_Buffer buffer = TLS_BufferPool.poll() )
+					while( !handshaking.isComplete() )
 					{
-						ByteBuffer encrypted = buffer.get();
-						SSLEngineResult result = ssl.wrap(data, encrypted);
-						
-						if( result.getStatus() != SSLEngineResult.Status.OK )
-							throw new IllegalStateException("Invalid SSLEngine state in wrap : " + result.getStatus());
-						
-						if( result.getHandshakeStatus() == HandshakeStatus.NEED_TASK )
-						{
-							// handshake task can happen at any time
-							Runnable task;
-							while((task = ssl.getDelegatedTask()) != null )
-								task.run();
-						}
-						
-						source.write(encrypted.flip());
+						try { handshaking.await(); }
+						catch(InterruptedException e) { throw new RuntimeException(e); }
 					}
+					
+					try
+					{
+						try (TLS_Buffer buffer = TLS_BufferPool.poll() )
+						{
+							ByteBuffer encrypted = buffer.get();
+							SSLEngineResult result = ssl.wrap(data, encrypted);
+							
+							if( result.getStatus() != SSLEngineResult.Status.OK )
+								throw new IllegalStateException("Invalid SSLEngine state in wrap : " + result.getStatus());
+							
+							source.write(encrypted.flip());
+							
+							if( result.getHandshakeStatus() != HandshakeStatus.FINISHED && result.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING )
+							{
+								handshaking.reset();
+								handshake(null);
+								continue;
+							}
+						}
+					}
+					catch(Exception e) { throw new RuntimeException(e); }
 				}
-				catch(Exception e) { throw new RuntimeException(e); }
+			}
+			finally
+			{
+				writing.unlock();
 			}
 		}
 
@@ -961,6 +993,66 @@ public class DefaultNetwork extends Manager<Network>
 		{
 			idle = System.currentTimeMillis();
 			TLS_BufferPool.offer(this);
+		}
+	}
+	
+	private static class CompletionLock
+	{
+		private final ReentrantLock lock = new ReentrantLock();
+		private final Condition condition = lock.newCondition();
+		private volatile boolean isComplete = false;
+
+		public void await() throws InterruptedException
+		{
+			lock.lock();
+			try
+			{
+				while( !isComplete ) condition.await();
+			}
+			finally
+			{
+				lock.unlock();
+			}
+		}
+
+		public boolean isComplete()
+		{
+			lock.lock();
+			try
+			{
+				return isComplete;
+			}
+			finally
+			{
+				lock.unlock();
+			}
+		}
+
+		public void complete()
+		{
+			lock.lock();
+			try
+			{
+				isComplete = true;
+				condition.signalAll();
+			}
+			finally
+			{
+				lock.unlock();
+			}
+		}
+
+		public void reset()
+		{
+			lock.lock();
+			try
+			{
+				isComplete = false;
+			}
+			finally
+			{
+				lock.unlock();
+			}
 		}
 	}
 }

@@ -179,14 +179,14 @@ public class DefaultConfig extends Manager<Config>
 				for( Map.Entry<String, String> entry : System.getenv().entrySet() )
 				{
 					String key = entry.getKey().replaceAll("[^a-zA-Z0-9_.-]", "");
-					if( !key.isBlank() )
+					if( !key.isBlank() && !key.replaceAll("[_.]", "").isBlank() )
 						instance.set(key, entry.getValue());
 				}
 				
 				for( Map.Entry<Object, Object> entry : System.getProperties().entrySet() )
 				{
 					String key = entry.getKey().toString().replaceAll("[^a-zA-Z0-9_.-]", "");
-					if( !key.isBlank() )
+					if( !key.isBlank() && !key.replaceAll("[_.]", "").isBlank() )
 						instance.set(key, Data.of(entry.getValue().toString()));
 				}
 			});

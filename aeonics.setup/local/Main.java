@@ -217,9 +217,7 @@ public class Main extends Plugin
 			User.Type user = new User().template().create(Data.map().put("parameters", Data.map().put("login", "admin").put("active", true)))
 				.name("Admin User")
 				.addRelation("roles", Role.SUPERADMIN)
-				.addRelation("groups", new Group().template().create()
-					.name("Administrators")
-					.addRelation("roles", new Role().template().create().name("Admin")))
+				.addRelation("groups", Group.ADMINISTRATORS)
 				.<User.Type>cast()
 				;
 			

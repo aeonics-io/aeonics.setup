@@ -201,7 +201,7 @@ public class DefaultSecurity extends Manager<Security>
 		
 		private Map<String, Token> tokens = new ConcurrentHashMap<>();
 		
-		public Token generateToken(User.Type user, long validity, boolean exclusive, String... scopes)
+		public synchronized Token generateToken(User.Type user, long validity, boolean exclusive, String... scopes)
 		{
 			if( user == null || user == User.ANONYMOUS || user == User.SYSTEM || scopes == null || scopes.length == 0 ) 
 				throw new IllegalArgumentException();
@@ -224,7 +224,7 @@ public class DefaultSecurity extends Manager<Security>
 			return null;
 		}
 		
-		public Token authenticate(String token, boolean reset)
+		public synchronized Token authenticate(String token, boolean reset)
 		{
 			if( token == null || token.isBlank() ) return null;
 			
@@ -258,7 +258,7 @@ public class DefaultSecurity extends Manager<Security>
 			return null;
 		}
 		
-		public void revokeToken(Token token)
+		public synchronized void revokeToken(Token token)
 		{
 			if( token == null ) return;
 			
@@ -276,7 +276,7 @@ public class DefaultSecurity extends Manager<Security>
 			}
 		}
 		
-		public void clearTokens(User.Type user)
+		public synchronized void clearTokens(User.Type user)
 		{
 			if( user == null || user == User.ANONYMOUS || user == User.SYSTEM ) return;
 			
