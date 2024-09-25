@@ -264,11 +264,16 @@ public class DefaultSnapshot extends Manager<Snapshot>
 			if( Config.implodeName(Snapshot.class, "path").equals(key) )
 			{
 				try
-				{ 
-					store = Factory.of(Storage.class).get(Storage.File.class)
-						.create(Data.map().put("parameters", Data.map().put("root", value)))
-						.name("Snapshot storage")
-						.internal(true);
+				{
+					if( store == null )
+					{
+						store = Factory.of(Storage.class).get(Storage.File.class)
+							.create(Data.map().put("parameters", Data.map().put("root", value)))
+							.name("Snapshot storage")
+							.internal(true);
+					}
+					else
+						store.parameter("root", value);
 				}
 				catch(Exception e)
 				{
