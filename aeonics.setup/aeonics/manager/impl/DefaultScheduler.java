@@ -30,7 +30,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 		
 		public void at(Consumer<ZonedDateTime> task, ZonedDateTime time)
 		{
-			ZonedDateTime now = ZonedDateTime.now();
+			ZonedDateTime now = ZonedDateTime.now().withNano(0);
 			
 			if( time.isBefore(now) )
 			{
@@ -79,7 +79,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 				Thread.currentThread().setName("Background :: Scheduler Manager");
 				while(true)
 				{
-					ZonedDateTime now = ZonedDateTime.now();
+					ZonedDateTime now = ZonedDateTime.now().withNano(0);
 					ZonedDateTime next = null;
 					for( Cron.Type c : Registry.of(Cron.class) )
 					{
@@ -88,7 +88,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 						ZonedDateTime future = c.next(false);
 						if( future == null ) continue;
 						
-						if( future.isBefore(now) )
+						if( future.isEqual(now) || future.isBefore(now) )
 						{
 							Manager.of(Executor.class).normal(() -> c.accept(now));
 							future = c.next(true);
