@@ -562,7 +562,10 @@ public class DefaultNetwork extends Manager<Network>
 					String remoteAddress = ((InetSocketAddress) channel.getRemoteAddress()).getAddress().getHostAddress();
 					int remotePort = ((InetSocketAddress) channel.getRemoteAddress()).getPort();
 					
-					Manager.of(Logger.class).fine(Network.class, "Timeout for connection {}:{} -> {}:{}", localAddress, localPort, remoteAddress, remotePort);
+					if( isClientMode() )
+						Manager.of(Logger.class).fine(Network.class, "Timeout for connection {}:{} -> {}:{}", localAddress, localPort, remoteAddress, remotePort);
+					else
+						Manager.of(Logger.class).fine(Network.class, "Timeout for connection {}:{} -> {}:{}", remoteAddress, remotePort, localAddress, localPort);
 					c.close();
 				}
 				catch(Exception e)
