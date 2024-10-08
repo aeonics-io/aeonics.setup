@@ -151,6 +151,14 @@ public class Main extends Plugin
 			.rule(Parameter.Rule.BOOLEAN)
 			.optional(true)
 			.defaultValue(false));
+		
+		c.declare("aeonics.manager.snapshot", new Parameter("current")
+			.summary("Snapshot currently loaded")
+			.description("This read-only parameter contains the name of the last restored snapshot. If set at boot time using command line parameters or environment "
+				+ "variables, it defines which snapshot to load initially.")
+			.format(Parameter.Format.TEXT)
+			.optional(true)
+			.defaultValue(null));
 	}
 	
 	private void afterLoad()
@@ -160,11 +168,14 @@ public class Main extends Plugin
 	
 	private void beforeConfig()
 	{
+		String snapshot = System.getProperty("AEONICS_MANAGER_SNAPSHOT_CURRENT");
+		if( snapshot == null || snapshot.isBlank() ) snapshot = System.getenv("AEONICS_MANAGER_SNAPSHOT_CURRENT");
+		if( snapshot == null || snapshot.isBlank() ) snapshot = Manager.of(Snapshot.class).latest();
+		
 		// restore the latest snapshot
-		String latestSnapshot = Manager.of(Snapshot.class).latest();
-		if( latestSnapshot != null )
+		if( snapshot != null )
 		{
-			try { Manager.of(Snapshot.class).restore(latestSnapshot).await(); }
+			try { Manager.of(Snapshot.class).restore(snapshot).await(); }
 			catch(Exception e) { Manager.of(Logger.class).warning(Snapshot.class, e); }
 		}
 		else

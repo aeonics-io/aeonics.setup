@@ -90,9 +90,12 @@ public class DefaultScheduler extends Manager<Scheduler>
 						
 						if( future.isEqual(now) || future.isBefore(now) )
 						{
+							Manager.of(Logger.class).finest(Scheduler.class, "Task {} ({}) is executed now", c.id(), c.name());
 							Manager.of(Executor.class).normal(() -> c.accept(now));
 							future = c.next(true);
 						}
+						else
+							Manager.of(Logger.class).finest(Scheduler.class, "Task {} ({}) is scheduled for {}", c.id(), c.name(), future);
 						
 						if( next == null || (future != null && future.isBefore(next)) )
 							next = future;
@@ -102,12 +105,15 @@ public class DefaultScheduler extends Manager<Scheduler>
 					while( i.hasNext() )
 					{
 						Tuple<ZonedDateTime, Consumer<ZonedDateTime>> t = i.next();
-						if( t.a.isBefore(now) )
+						if( t.a.isEqual(now) || t.a.isBefore(now) )
 						{
+							Manager.of(Logger.class).finest(Scheduler.class, "One shot task is executed now");
 							Manager.of(Executor.class).normal(() -> t.b.accept(now));
 							i.remove();
 							continue;
 						}
+						else
+							Manager.of(Logger.class).finest(Scheduler.class, "One shot task is scheduled for {}", t.a);
 						
 						if( next == null || t.a.isBefore(next) )
 							next = t.a;

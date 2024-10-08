@@ -156,6 +156,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				
 				long end = System.currentTimeMillis();
 				Manager.of(Logger.class).fine(Snapshot.class, "Snapshot restoration completed in " + (end-start) + "ms");
+				Manager.of(Config.class).set(Snapshot.class, "current", snapshot);
 			});
 		}
 

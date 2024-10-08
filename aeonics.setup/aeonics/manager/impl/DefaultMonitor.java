@@ -179,8 +179,6 @@ public class DefaultMonitor extends Manager<Monitor>
 				catch(Exception e) { Manager.of(Logger.class).severe(Monitor.class, "Could not set monitor enabled state to {}. Current value {} is unchanged.", value, enabled); }
 			}
 		}
-
-		
 	}
 	
 	protected Class<? extends DefaultMonitor.Implementation> defaultTarget() { return DefaultMonitor.Implementation.class; }
