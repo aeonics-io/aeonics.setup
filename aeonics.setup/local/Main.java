@@ -186,11 +186,12 @@ public class Main extends Plugin
 	{
 		// enable monitoring
 		Manager.of(Config.class).set(Monitor.class, "enabled", true);
+
+		setupMonitorFlow();
 		
 		if( !Manager.of(Config.class).get("aeonics.setup", "initialized").asBool() )
 		{
 			setupLoggerFlow();
-			setupMonitorFlow();
 			Manager.of(Config.class).set("aeonics.setup", "initialized", true);
 		}
 		
@@ -377,6 +378,19 @@ public class Main extends Plugin
 		// ===========================
 		// Monitor topic
 		// ===========================
+		if( !Manager.of(Config.class).get("aeonics.setup", "initialized").asBool() )
+		{
+			Topic.Type topic = new Topic()
+				.template()
+				.create()
+				.name("monitor");
+			Queue.Type queue = new Queue()
+				.template()
+				.create();
+			Destination.Type destination = Factory.of(Destination.class).get(Console.class).create();
+			topic.addRelation("queues", queue, Data.map().put("binding", "#"));
+			queue.addRelation("destinations", destination, Data.map().put("input", "data"));
+		}
 		
 		Origin.Type origin = new Origin.Scheduled()
 			.template()
@@ -396,25 +410,36 @@ public class Main extends Plugin
 			{
 				if( !Manager.of(Config.class).get(Monitor.class, "enabled").asBool() ) return;
 				
-				Data monitor = Manager.of(Monitor.class).report();
-				if( !monitor.isEmpty() )
-					origin.emit(new Message("metrics").user(User.SYSTEM.id()).content(monitor), "metrics");
+				try
+				{
+					Data monitor = Manager.of(Monitor.class).report();
+					if( !monitor.isEmpty() )
+						origin.emit(new Message("metrics").user(User.SYSTEM.id()).content(monitor), "metrics");
+				}
+				catch(Exception e)
+				{
+					Manager.of(Logger.class).warning(Monitor.class, e);
+				}
+				
+				try
+				{
+					Data probes = Data.map();
+					for( Probe.Type p : Registry.of(Probe.class) )
+						probes.put(p.name(), p.report());
+					if( !probes.isEmpty() )
+						origin.emit(new Message("probes").user(User.SYSTEM.id()).content(probes), "probes");
+				}
+				catch(Exception e)
+				{
+					Manager.of(Logger.class).warning(Monitor.class, e);
+				}
 			});
-		Topic.Type topic = new Topic()
-			.template()
-			.create()
-			.name("monitor");
-		Queue.Type queue = new Queue()
-			.template()
-			.create();
-		Destination.Type destination = Factory.of(Destination.class).get(Console.class).create();
-		origin.addRelation("topics", topic, Data.map().put("channel", "metrics"));
-		origin.addRelation("topics", topic, Data.map().put("channel", "probes"));
-		topic.addRelation("queues", queue, Data.map().put("binding", "#"));
-		queue.addRelation("destinations", destination, Data.map().put("input", "data"));
 		
 		Manager.of(Config.class).watch(Monitor.class, "window", (key, value) -> { 
 			Factory.update(origin, Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (value.asLong() / 1000))); 
 		});
+		
+		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("channel", "metrics"));
+		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("channel", "probes"));
 	}
 }
