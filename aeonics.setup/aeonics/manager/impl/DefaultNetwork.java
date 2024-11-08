@@ -696,7 +696,6 @@ public class DefaultNetwork extends Manager<Network>
 			while( source.hasNext() )
 			{
 				if (!reading.compareAndSet(false, true)) return;
-
 				try
 				{
 					read2();
@@ -731,43 +730,34 @@ public class DefaultNetwork extends Manager<Network>
 				// maybe we cannot fit all data in the encrypted buffer
 				// so put what we can now. IN ALL CASES, either we can fit all data,
 				// or it will free some space after unwrap and we can fit the remaining data.
-				
+
 				boolean partial = false;
 				int mark = 0;
 				do
 				{
-					if( data.length > encrypted.get().remaining() )
-					{
-						partial = true;
-						int limit = encrypted.get().remaining();
-						encrypted.get().put(data, mark, Math.min(limit, data.length - mark));
-						mark = limit;
-					}
-					else
-					{
-						encrypted.get().put(data);
-						partial = false;
-					}
-					
+					int limit = encrypted.get().remaining();
+					int max = Math.min(limit, data.length - mark);
+					encrypted.get().put(data, mark, max);
+					mark += max;
+					partial = mark < data.length;
+
 					encrypted.get().flip(); // switch to read mode
-					read3(); // encrypted gets back as read mode
+					if( !read3() ) // encrypted gets back as read mode
+					{
+						encrypted.close();
+						return;
+					}
 					encrypted.get().compact(); // switch to write mode
 				} while( partial );
 			}
-			
-			if( !encrypted.get().hasRemaining() )
-			{
-				encrypted.close();
-				encrypted = null;
-			}
 		}
 		
-		private void read3() throws Exception
+		private boolean read3() throws Exception
 		{
 			if( !handshaking.isComplete() )
 			{
 				handshake(encrypted.get());
-				return;
+				return true;
 			}
 			
 			// this is step three : we do the unwrap
@@ -782,12 +772,24 @@ public class DefaultNetwork extends Manager<Network>
 				{
 					SSLEngineResult status = ssl.unwrap(encrypted.get(), decrypted.get());
 
-					if( status.getHandshakeStatus() == HandshakeStatus.NEED_TASK )
+					switch( status.getHandshakeStatus() )
 					{
-						// handshake task can happen at any time
-						Runnable task;
-						while((task = ssl.getDelegatedTask()) != null )
-							task.run();
+						case NEED_TASK:
+						{
+							// handshake task can happen at any time
+							Runnable task;
+							while((task = ssl.getDelegatedTask()) != null )
+								task.run();
+						}
+						case NEED_WRAP:
+						{
+							try( TLS_Buffer encrypted = TLS_BufferPool.poll() )
+							{
+								status = ssl.wrap(EMPTY, encrypted.get());
+								source.write(encrypted.get().flip());
+							}
+						}
+						default: break;
 					}
 					
 					switch( status.getStatus() )
@@ -822,11 +824,13 @@ public class DefaultNetwork extends Manager<Network>
 						default:
 						case CLOSED:
 						{
-							return; // nothing more
+							return false; // nothing more
 						}
 					}
 				} // return decrypted buffer to the pool
 			} while( wasok );
+			
+			return true;
 		}
 		
 		private final ReentrantLock writing = new ReentrantLock(true);

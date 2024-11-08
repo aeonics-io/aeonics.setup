@@ -184,9 +184,6 @@ public class Main extends Plugin
 	
 	private void onConfig()
 	{
-		// enable monitoring
-		Manager.of(Config.class).set(Monitor.class, "enabled", true);
-
 		setupMonitorFlow();
 		
 		if( !Manager.of(Config.class).get("aeonics.setup", "initialized").asBool() )
@@ -380,16 +377,12 @@ public class Main extends Plugin
 		// ===========================
 		if( !Manager.of(Config.class).get("aeonics.setup", "initialized").asBool() )
 		{
-			Topic.Type topic = new Topic()
+			new Topic()
 				.template()
 				.create()
 				.name("monitor");
-			Queue.Type queue = new Queue()
-				.template()
-				.create();
-			Destination.Type destination = Factory.of(Destination.class).get(Console.class).create();
-			topic.addRelation("queues", queue, Data.map().put("binding", "#"));
-			queue.addRelation("destinations", destination, Data.map().put("input", "data"));
+			
+			Manager.of(Config.class).set(Monitor.class, "enabled", true);
 		}
 		
 		Origin.Type origin = new Origin.Scheduled()

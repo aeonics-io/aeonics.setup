@@ -47,6 +47,8 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 			
 			start(Phase.SHUTDOWN);
 			terminated.set(true);
+			
+			System.exit(0);
 		}
 		
 		private void start(Phase phase)
