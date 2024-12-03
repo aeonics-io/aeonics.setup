@@ -368,6 +368,14 @@ public class Main extends Plugin
 		Destination.Type destination = Factory.of(Destination.class).get(Console.class).create();
 		topic.addRelation("queues", queue, Data.map().put("binding", "#"));
 		queue.addRelation("destinations", destination, Data.map().put("input", "data"));
+		
+		Factory.of(Flow.class).get(Flow.class).create()
+			.addRelation("topics", topic, Data.map().put("x", 1).put("y", 1))
+			.addRelation("queues", queue, Data.map().put("x", 1).put("y", 3))
+			.addRelation("destinations", destination, Data.map().put("x", 3).put("y", 3))
+			.name("Logs")
+			.parameter("notes", "This data flow is used to manage the system logs.")
+			;
 	}
 	
 	private void setupMonitorFlow()
@@ -434,5 +442,12 @@ public class Main extends Plugin
 		
 		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("channel", "metrics"));
 		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("channel", "probes"));
+		
+		Factory.of(Flow.class).get(Flow.class).create()
+			.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("x", 3).put("y", 1))
+			.addRelation("origins", origin, Data.map().put("x", 1).put("y", 1))
+			.name("Monitoring")
+			.parameter("notes", "This data flow is used to manage the various metrics of the system.")
+			;
 	}
 }
