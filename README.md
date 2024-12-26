@@ -1,6 +1,6 @@
 ## Plugin: "aeonics.setup"
 
-This *Nucleus Runtime* plugin provides a default implementation of system 
+This Aeonics software plugin provides a default implementation of system 
 managers and initial lifecycle.
 
 ## Compile and package

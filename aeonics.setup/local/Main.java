@@ -364,8 +364,9 @@ public class Main extends Plugin
 			.name("log");
 		Queue.Type queue = new Queue()
 			.template()
-			.create();
-		Destination.Type destination = Factory.of(Destination.class).get(Console.class).create();
+			.create()
+			.name("Logs queue");
+		Destination.Type destination = Factory.of(Destination.class).get(Console.class).create().name("Console output");
 		topic.addRelation("queues", queue, Data.map().put("binding", "#"));
 		queue.addRelation("destinations", destination, Data.map().put("input", "data"));
 		
@@ -440,8 +441,8 @@ public class Main extends Plugin
 			Factory.update(origin, Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (value.asLong() / 1000))); 
 		});
 		
-		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("channel", "metrics"));
-		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("channel", "probes"));
+		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("output", "metrics"));
+		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("output", "probes"));
 		
 		Factory.of(Flow.class).get(Flow.class).create()
 			.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("x", 3).put("y", 1))
