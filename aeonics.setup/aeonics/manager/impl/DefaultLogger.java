@@ -4,18 +4,53 @@ import java.util.function.Supplier;
 
 import aeonics.data.Data;
 import aeonics.entity.Message;
-import aeonics.entity.Registry;
-import aeonics.entity.Topic;
+import aeonics.entity.Step;
+import aeonics.entity.Step.Origin;
 import aeonics.entity.security.User;
 import aeonics.manager.Config;
 import aeonics.manager.Executor;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
+import aeonics.template.Channel;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
+import aeonics.util.Snapshotable.SnapshotMode;
 
 public class DefaultLogger extends Manager<Logger>
 {
+	private static final class _Logger extends Origin.Type
+	{
+		@Override
+		public void produce(Message message, String channel)
+		{
+			if( message == null ) return;
+			if( !started() ) start();
+			super.produce(message, channel);
+		}
+	}
+	
+	public static void register()
+	{
+		// calling this method will force initialization of all private static members
+	}
+	
+	private static final _Logger origin = new Origin() { }
+		.target(_Logger.class)
+		.creator(_Logger::new)
+		.template()
+		.<Step.Template>cast()
+		.output(new Channel("data").summary("Logs").description("Log entries"))
+		.icon("description")
+		.summary("Logger")
+		.description("This data origin is the source for all log entries that are handled by the logger manager.")
+		.create(Data.map().put("id", "10000000-1500000000000000"))
+		.name("Logger")
+		.internal(true)
+		.snapshotMode(SnapshotMode.UPDATE)
+		.cast();
+		
+	public static Origin.Type origin() { return origin; }
+
 	private static class Implementation extends Logger
 	{
 		public Implementation()
@@ -30,23 +65,14 @@ public class DefaultLogger extends Manager<Logger>
 			
 			Runnable publish = () ->
 			{
-				Topic.Type topic = Registry.of(Topic.class).get(Manager.of(Config.class).get(Logger.class, "topic").asString());
-				if( topic != null )
-				{
-					topic.publish(
-						new Message(level + "/" + type)
-							.user(User.SYSTEM.id())
-							.content(Data.map()
-								.put("date", System.currentTimeMillis())
-								.put("level", level)
-								.put("type", type)
-								.put("message", bindMessage(message, params)))
-						);
-					return;
-				}
-				
-				// fallback
-				Logger.CONSOLE.log(level, type, message, params);
+				Message msg = new Message(level + "/" + type)
+					.user(User.SYSTEM.id())
+					.content(Data.map()
+						.put("date", System.currentTimeMillis())
+						.put("level", level)
+						.put("type", type)
+						.put("message", bindMessage(message, params)));
+				origin.produce(msg, "data");
 			};
 			
 			if( Manager.of(Executor.class) != null && !Manager.of(Executor.class).isNormal() )
@@ -72,7 +98,7 @@ public class DefaultLogger extends Manager<Logger>
 	{
 		return super.template()
 			.summary("Data logger")
-			.description("Sends all logs in a topic so that it can be managed like a data stream. If the topic is not defined, then it falls back to the console logger.")
+			.description("Emit all logs as an origin step so that it can be managed like a data stream.")
 			.config(Logger.class, new Parameter("level")
 				.summary("The log level")
 				.description("The log level is a number between 0 (log everything) and 1000 (log only critical errors). Only the logs with a level above the"
@@ -80,12 +106,6 @@ public class DefaultLogger extends Manager<Logger>
 				.rule(Parameter.Rule.INTEGER)
 				.format(Parameter.Format.NUMBER)
 				.optional(true)
-				.defaultValue(700))
-			.config(Logger.class, new Parameter("topic")
-				.summary("Logger topic")
-				.description("The topic in which to publish log messages.")
-				.format(Parameter.Format.TEXT)
-				.optional(true)
-				.defaultValue("log"));
+				.defaultValue(700));
 	}
 }

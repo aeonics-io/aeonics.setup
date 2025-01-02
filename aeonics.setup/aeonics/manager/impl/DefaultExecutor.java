@@ -36,6 +36,7 @@ public class DefaultExecutor extends Manager<Executor>
 		private MonitoredThreadPool priority = MonitoredThreadPool.single();
 		public <T> Task<T> priority(aeonics.util.Functions.Supplier<T> task) { return sync(task, priority); }
 		public <T> Task<T> priorityResolved(T value) { return completed(value, priority); }
+		public <T> Task<T> priorityPending() { return pending(priority); }
 		public Task<Void> priorityFailed(Throwable error) { return failed(error, priority); }
 		public Task<Void> priority(List<Task<?>> tasks) { return all(tasks, priority); }
 		public boolean isPriority(Thread thread) { return thread != null && thread.getThreadGroup().equals(priority_group); }
@@ -43,6 +44,7 @@ public class DefaultExecutor extends Manager<Executor>
 		private MonitoredThreadPool normal = MonitoredThreadPool.fixed((int) Math.ceil(Runtime.getRuntime().availableProcessors()*1.0));
 		public <T> Task<T> normal(aeonics.util.Functions.Supplier<T> task) { return async(task, normal); }
 		public <T> Task<T> normalResolved(T value) { return completed(value, normal); }
+		public <T> Task<T> normalPending() { return pending(normal); }
 		public Task<Void> normalFailed(Throwable error) { return failed(error, normal); }
 		public Task<Void> normal(List<Task<?>> tasks) { return all(tasks, normal); }
 		public boolean isNormal(Thread thread) { return thread != null && thread.getThreadGroup().equals(normal_group); }
@@ -50,12 +52,14 @@ public class DefaultExecutor extends Manager<Executor>
 		private MonitoredThreadPool background = MonitoredThreadPool.cached();
 		public <T> Task<T> background(aeonics.util.Functions.Supplier<T> task) { return sync(task, background); }
 		public <T> Task<T> backgroundResolved(T value) { return completed(value, background); }
+		public <T> Task<T> backgroundPending() { return pending(background); }
 		public Task<Void> backgroundFailed(Throwable error) { return failed(error, background); }
 		public Task<Void> background(List<Task<?>> tasks) { return all(tasks, background); }
 		public boolean isBackground(Thread thread) { return thread != null && thread.getThreadGroup().equals(background_group); }
 		
 		public <T> Task<T> io(aeonics.util.Functions.Supplier<T> task) { return normal(task); }
 		public <T> Task<T> ioResolved(T value) { return normalResolved(value); }
+		public <T> Task<T> ioPending() { return normalPending(); }
 		public Task<Void> ioFailed(Throwable error) { return normalFailed(error); }
 		public Task<Void> io(List<Task<?>> tasks) { return normal(tasks); }
 		public boolean isIo(Thread thread) { return false; }

@@ -3,7 +3,8 @@ package local;
 import aeonics.Plugin;
 import aeonics.data.Data;
 import aeonics.entity.*;
-import aeonics.entity.basic.Console;
+import aeonics.entity.Step.Destination;
+import aeonics.entity.Step.Origin;
 import aeonics.entity.security.*;
 import aeonics.manager.*;
 import aeonics.manager.Lifecycle.Phase;
@@ -19,10 +20,10 @@ import aeonics.manager.impl.DefaultSnapshot;
 import aeonics.manager.impl.DefaultTimeout;
 import aeonics.manager.impl.DefaultTranslator;
 import aeonics.manager.impl.DefaultVault;
-import aeonics.template.Channel;
 import aeonics.template.Factory;
 import aeonics.template.Parameter;
 import aeonics.util.Hardware;
+import aeonics.util.Snapshotable.SnapshotMode;
 
 public class Main extends Plugin
 {
@@ -130,6 +131,9 @@ public class Main extends Plugin
 		manager(Network.class, DefaultNetwork.class, false, null);
 		manager(Translator.class, DefaultTranslator.class, false, null);
 		
+		// initialize static members
+		DefaultLogger.register();
+		
 		vaultSalt = null;
 		
 		Config c = Manager.of(Config.class);
@@ -184,11 +188,11 @@ public class Main extends Plugin
 	
 	private void onConfig()
 	{
-		setupMonitorFlow();
-		
 		if( !Manager.of(Config.class).get("aeonics.setup", "initialized").asBool() )
 		{
 			setupLoggerFlow();
+			setupMonitorFlow();
+			Manager.of(Config.class).set(Monitor.class, "enabled", true);
 			Manager.of(Config.class).set("aeonics.setup", "initialized", true);
 		}
 		
@@ -266,9 +270,12 @@ public class Main extends Plugin
 	private void onRun()
 	{
 		// start all origins
-		Registry.of(Origin.class).forEach((e) -> {
-			try { if( e.stopped() ) e.start(); }
-			catch(Exception x) { Manager.of(Logger.class).warning(e.getClass(), x); }
+		Registry.of(Step.class).forEach((e) -> {
+			if( e instanceof Origin.Type )
+			{
+				try { if( ((Origin.Type)e).stopped() ) ((Origin.Type)e).start(); }
+				catch(Exception x) { Manager.of(Logger.class).warning(e.getClass(), x); }
+			}
 		});
 	}
 	
@@ -292,9 +299,12 @@ public class Main extends Plugin
 		Manager.replace(Logger.class, Logger.CONSOLE);
 		
 		// stop all origins
-		Registry.of(Origin.class).forEach((e) -> {
-			try { if( e.started() ) e.stop(); }
-			catch(Exception x) { Manager.of(Logger.class).warning(e.getClass(), x); }
+		Registry.of(Step.class).forEach((e) -> {
+			if( e instanceof Origin.Type )
+			{
+				try { if( ((Origin.Type)e).started() ) ((Origin.Type)e).stop(); }
+				catch(Exception x) { Manager.of(Logger.class).warning(e.getClass(), x); }
+			}
 		});
 	}
 	
@@ -312,11 +322,14 @@ public class Main extends Plugin
 		data.put("config", config);
 		
 		Data registry = Data.map();
-		Registry.all().forEach((r) -> {
+		Registry.all().forEach((r) ->
+		{
 			Data entities = Data.list();
-			r.forEach((e) -> {
-				if( !e.internal() )
-					entities.add(e.snapshot());
+			r.forEach((e) -> 
+			{
+				// we include all the entities including the SnapshotMode.NONE so that
+				// we keep a trace of those.
+				entities.add(e.snapshot());
 			});
 			if( entities.size() > 0 )
 				registry.put(r.category(), entities);
@@ -339,14 +352,45 @@ public class Main extends Plugin
 		
 		if( !data.isEmpty("registry") )
 		{
-			// first clear all non-internal entities
-			Registry.all().forEach(r -> r.clear(e -> !e.internal()));
+			// first clear all entities that are not internal and full snapshot
+			Registry.all().forEach(r -> r.clear((e) -> !e.internal() && e.snapshotMode() == SnapshotMode.FULL));
 			
 			// then populate
 			data.get("registry").entrySet().forEach((entry) -> {
-				entry.getValue().forEach((entity) -> {
-					try { Factory.create(entity); }
-					catch(Exception e) { Manager.of(Logger.class).config(Snapshot.class, e); }
+				entry.getValue().forEach((entity) ->
+				{
+					try
+					{
+						SnapshotMode mode = SnapshotMode.valueOf(entity.asString("mode")); 
+						Entity existing = Registry.of(entity.asString("category")).get(entity.asString("id"));
+						
+						switch(mode)
+						{
+							case FULL:
+							{
+								if( existing != null )
+									throw new IllegalStateException("Cannot overwrite target entity " + entity);
+								else
+									Factory.create(entity);
+								break;
+							}
+							case UPDATE:
+							{
+								if( existing == null )
+									throw new IllegalStateException("Missing target entity " + entity);
+								if( existing.snapshotMode() != SnapshotMode.UPDATE )
+									throw new IllegalStateException("Snapshot mode mismatch for entity " + entity);
+								else
+									existing.template().update(entity, existing);
+								break;
+							}
+							case NONE:
+							{
+								break;
+							}
+						}
+					}
+					catch(Exception e) { Manager.of(Logger.class).config(Snapshot.class, e); return; }
 				});
 			});
 		}
@@ -354,26 +398,12 @@ public class Main extends Plugin
 	
 	private void setupLoggerFlow()
 	{
-		// ===========================
-		// Logger topic
-		// ===========================
-		
-		Topic.Type topic = new Topic()
-			.template()
-			.create()
-			.name("log");
-		Queue.Type queue = new Queue()
-			.template()
-			.create()
-			.name("Logs queue");
-		Destination.Type destination = Factory.of(Destination.class).get(Console.class).create().name("Console output");
-		topic.addRelation("queues", queue, Data.map().put("binding", "#"));
-		queue.addRelation("destinations", destination, Data.map().put("input", "data"));
+		Destination.Type destination = Factory.of(Step.class).get(Console.class).create().name("Console output");
+		DefaultLogger.origin().link("data", destination, "data");
 		
 		Factory.of(Flow.class).get(Flow.class).create()
-			.addRelation("topics", topic, Data.map().put("x", 1).put("y", 1))
-			.addRelation("queues", queue, Data.map().put("x", 1).put("y", 3))
-			.addRelation("destinations", destination, Data.map().put("x", 3).put("y", 3))
+			.step(DefaultLogger.origin(), 1, 1)
+			.step(destination, 3, 3)
 			.name("Logs")
 			.parameter("notes", "This data flow is used to manage the system logs.")
 			;
@@ -381,72 +411,8 @@ public class Main extends Plugin
 	
 	private void setupMonitorFlow()
 	{
-		// ===========================
-		// Monitor topic
-		// ===========================
-		if( !Manager.of(Config.class).get("aeonics.setup", "initialized").asBool() )
-		{
-			new Topic()
-				.template()
-				.create()
-				.name("monitor");
-			
-			Manager.of(Config.class).set(Monitor.class, "enabled", true);
-		}
-		
-		Origin.Type origin = new Origin.Scheduled()
-			.template()
-			.output(new Channel("metrics")
-				.summary("Metrics")
-				.description("System metrics"))
-			.output(new Channel("probes")
-				.summary("Probes")
-				.description("System probes"))
-			.summary("Monitoring data origin")
-			.description("This origin entity collects monioring metrics at the interval defined by the monitor manager and feeds them as data in the system.")
-			.create(Data.map().put("parameters", Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (Manager.of(Config.class).get(Monitor.class, "window").asLong() / 1000))))
-			.name("Monitor input");
-		origin
-			.<Origin.Scheduled.Type>cast()
-			.task((time) -> 
-			{
-				if( !Manager.of(Config.class).get(Monitor.class, "enabled").asBool() ) return;
-				
-				try
-				{
-					Data monitor = Manager.of(Monitor.class).report();
-					if( !monitor.isEmpty() )
-						origin.emit(new Message("metrics").user(User.SYSTEM.id()).content(monitor), "metrics");
-				}
-				catch(Exception e)
-				{
-					Manager.of(Logger.class).warning(Monitor.class, e);
-				}
-				
-				try
-				{
-					Data probes = Data.map();
-					for( Probe.Type p : Registry.of(Probe.class) )
-						probes.put(p.name(), p.report());
-					if( !probes.isEmpty() )
-						origin.emit(new Message("probes").user(User.SYSTEM.id()).content(probes), "probes");
-				}
-				catch(Exception e)
-				{
-					Manager.of(Logger.class).warning(Monitor.class, e);
-				}
-			});
-		
-		Manager.of(Config.class).watch(Monitor.class, "window", (key, value) -> { 
-			Factory.update(origin, Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (value.asLong() / 1000))); 
-		});
-		
-		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("output", "metrics"));
-		origin.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("output", "probes"));
-		
 		Factory.of(Flow.class).get(Flow.class).create()
-			.addRelation("topics", Registry.of(Topic.class).get("monitor"), Data.map().put("x", 3).put("y", 1))
-			.addRelation("origins", origin, Data.map().put("x", 1).put("y", 1))
+			.step(DefaultMonitor.origin(), 1, 1)
 			.name("Monitoring")
 			.parameter("notes", "This data flow is used to manage the various metrics of the system.")
 			;

@@ -6,15 +6,79 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
 import aeonics.data.Data;
+import aeonics.entity.Message;
+import aeonics.entity.Probe;
+import aeonics.entity.Registry;
+import aeonics.entity.Scheduled;
+import aeonics.entity.Step.Origin;
+import aeonics.entity.security.User;
 import aeonics.manager.Config;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Monitor;
+import aeonics.template.Channel;
+import aeonics.template.Factory;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
 
 public class DefaultMonitor extends Manager<Monitor>
 {
+	public static void register()
+	{
+		// calling this method will force initialization of all private static members
+	}
+	
+	private static Scheduled.Type origin = new Scheduled() { }
+		.template()
+		.icon("monitoring")
+		.output(new Channel("metrics")
+			.summary("Metrics")
+			.description("System metrics"))
+		.output(new Channel("probes")
+			.summary("Probes")
+			.description("System probes"))
+		.summary("Monitoring")
+		.description("This origin entity collects monioring metrics at the interval defined by the monitor manager and feeds them as data in the system.")
+		.create(Data.map().put("id", "10000000-2000000000000000")
+			.put("parameters", Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (Manager.of(Config.class).get(Monitor.class, "window").asLong() / 1000))))
+		.name("Monitoring")
+		.internal(true);
+	
+	static
+	{
+		origin
+		.task((time) -> 
+		{
+			if( !Manager.of(Config.class).get(Monitor.class, "enabled").asBool() ) return;
+			
+			try
+			{
+				Data monitor = Manager.of(Monitor.class).report();
+				if( !monitor.isEmpty() )
+					origin.produce(new Message("metrics").user(User.SYSTEM.id()).content(monitor), "metrics");
+			}
+			catch(Exception e)
+			{
+				Manager.of(Logger.class).warning(Monitor.class, e);
+			}
+			
+			try
+			{
+				Data probes = Data.map();
+				for( Probe.Type p : Registry.of(Probe.class) )
+					probes.put(p.name(), p.report());
+				if( !probes.isEmpty() )
+					origin.produce(new Message("probes").user(User.SYSTEM.id()).content(probes), "probes");
+			}
+			catch(Exception e)
+			{
+				Manager.of(Logger.class).warning(Monitor.class, e);
+			}
+		});
+	}
+	
+	public static Origin.Type origin() { return origin; }
+	
 	private static class Implementation extends Monitor
 	{
 		private static final String FROM = "_from";
@@ -170,7 +234,11 @@ public class DefaultMonitor extends Manager<Monitor>
 		{
 			if( Config.implodeName(Monitor.class, "window").equals(key) )
 			{
-				try { window = value.asInt(); }
+				try
+				{
+					Factory.update(origin, Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (value.asLong() / 1000)));
+					window = value.asInt();
+				}
 				catch(Exception e) { Manager.of(Logger.class).severe(Monitor.class, "Could not set monitor window to {}. Current value {} is unchanged.", value, window); }
 			}
 			else if( Config.implodeName(Monitor.class, "enabled").equals(key) )

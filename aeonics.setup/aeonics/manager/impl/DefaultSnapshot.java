@@ -271,7 +271,8 @@ public class DefaultSnapshot extends Manager<Snapshot>
 						store = Factory.of(Storage.class).get(Storage.File.class)
 							.create(Data.map().put("parameters", Data.map().put("root", value)))
 							.name("Snapshot storage")
-							.internal(true);
+							.internal(true)
+							.snapshotMode(SnapshotMode.NONE);
 					}
 					else
 						store.parameter("root", value);
