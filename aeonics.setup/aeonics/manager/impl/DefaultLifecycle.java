@@ -54,7 +54,7 @@ public class DefaultLifecycle extends Manager<Lifecycle>
 		private void start(Phase phase)
 		{
 			current.set(phase);
-			Thread.currentThread().setName("Main :: " + current);
+			Thread.currentThread().setName("aeonics #0 > Main :: " + current);
 			
 			long start = System.currentTimeMillis();
 			Manager.of(Logger.class).finer(Lifecycle.class, "Phase " + phase + " initiated");

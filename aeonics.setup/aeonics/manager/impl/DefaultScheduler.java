@@ -46,7 +46,7 @@ public class DefaultScheduler extends Manager<Scheduler>
 		.<Origin.Background>cast()
 		.run(() ->
 		{
-			Thread.currentThread().setName("Background :: Scheduler Manager");
+			Thread.currentThread().setName(Thread.currentThread().getName() + " :: Scheduler Manager");
 			while(true)
 			{
 				ZonedDateTime now = ZonedDateTime.now().withNano(0);

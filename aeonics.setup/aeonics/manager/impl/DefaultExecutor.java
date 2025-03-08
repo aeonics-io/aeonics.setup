@@ -8,6 +8,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
@@ -17,15 +18,16 @@ import aeonics.manager.Executor;
 import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.template.Template;
+import aeonics.util.Hardware;
 
 public class DefaultExecutor extends Manager<Executor>
 {
 	private static class Implementation extends Executor
 	{
 		private static ThreadGroup group = new ThreadGroup("aeonics");
-		private static ThreadGroup priority_group = new ThreadGroup(group, "priority");
-		private static ThreadGroup normal_group = new ThreadGroup(group, "normal");
-		private static ThreadGroup background_group = new ThreadGroup(group, "background");
+		private static ThreadGroup priority_group = new ThreadGroup(group, group.getName() + " priority");
+		private static ThreadGroup normal_group = new ThreadGroup(group, group.getName() + " normal");
+		private static ThreadGroup background_group = new ThreadGroup(group, group.getName() + " background");
 		
 		private static UncaughtExceptionHandler fatal = (t, e) ->
 		{
@@ -41,7 +43,7 @@ public class DefaultExecutor extends Manager<Executor>
 		public Task<Void> priority(List<Task<?>> tasks) { return all(tasks, priority); }
 		public boolean isPriority(Thread thread) { return thread != null && thread.getThreadGroup().equals(priority_group); }
 
-		private MonitoredThreadPool normal = MonitoredThreadPool.fixed((int) Math.ceil(Runtime.getRuntime().availableProcessors()*1.0));
+		private MonitoredThreadPool normal = MonitoredThreadPool.fixed((int) Math.ceil(Hardware.CPU.limit()));
 		public <T> Task<T> normal(aeonics.util.Functions.Supplier<T> task) { return async(task, normal); }
 		public <T> Task<T> normalResolved(T value) { return completed(value, normal); }
 		public <T> Task<T> normalPending() { return pending(normal); }
@@ -74,6 +76,7 @@ public class DefaultExecutor extends Manager<Executor>
 		{
 			private LongAdder errors = new LongAdder();
 			private LongAdder time = new LongAdder();
+			private static AtomicInteger counter = new AtomicInteger(0);
 			
 			public static MonitoredThreadPool single()
 			{
@@ -83,7 +86,7 @@ public class DefaultExecutor extends Manager<Executor>
 					t.setUncaughtExceptionHandler(fatal);
 					t.setDaemon(false);
 					t.setPriority(Thread.MAX_PRIORITY);
-					t.setName("Priority");
+					t.setName(group.getName() + " #" + counter.incrementAndGet() + " > Priority");
 					return t;
 				});
 			}
@@ -96,7 +99,7 @@ public class DefaultExecutor extends Manager<Executor>
 					t.setUncaughtExceptionHandler(fatal);
 					t.setDaemon(false);
 					t.setPriority(Thread.NORM_PRIORITY);
-					t.setName("Normal");
+					t.setName(group.getName() + " #" + counter.incrementAndGet() + " > Normal");
 					return t;
 				});
 			}
@@ -109,7 +112,7 @@ public class DefaultExecutor extends Manager<Executor>
 					t.setUncaughtExceptionHandler(fatal);
 					t.setDaemon(true);
 					t.setPriority(Thread.MIN_PRIORITY);
-					t.setName("Background");
+					t.setName(group.getName() + " #" + counter.incrementAndGet() + " > Background");
 					return t;
 				});
 			}

@@ -326,7 +326,7 @@ public class DefaultNetwork extends Manager<Network>
 		{
 			return Manager.of(Executor.class).background(() ->
 			{
-				Thread.currentThread().setName("Background :: Network Manager");
+				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Network Manager");
 				try
 				{
 					selector = Selector.open();

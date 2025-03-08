@@ -243,11 +243,11 @@ public class Main extends Plugin
 				adminHash = Manager.of(Security.class).hash(password, adminSalt);
 				
 				// CAUTION : this is on purpose, send it to the console and NOT to the logger
-				System.err.println("****** CAUTION ******");
-				System.err.println("No default admin user hash/salt were provided. A new password was generated:");
-				System.err.println("\t" + password);
-				System.err.println("To reuse this password without snapshot, use these command line arguments:");
-				System.err.println("\t-DAEONICS_SECURITY_ADMIN_HASH=" + adminHash + " -DAEONICS_SECURITY_ADMIN_SALT=" + adminSalt);
+				System.out.println("****** CAUTION ******");
+				System.out.println("No default admin user hash/salt were provided. A new password was generated:");
+				System.out.println("\t" + password);
+				System.out.println("To reuse this password without snapshot, use these command line arguments:");
+				System.out.println("\t-DAEONICS_SECURITY_ADMIN_HASH=" + adminHash + " -DAEONICS_SECURITY_ADMIN_SALT=" + adminSalt);
 			}
 			
 			Data context = Data.map().put("username", user.id()).put("hash", adminHash).put("salt", adminSalt);

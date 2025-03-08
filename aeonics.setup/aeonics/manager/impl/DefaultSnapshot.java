@@ -75,7 +75,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 			
 			return Manager.of(Executor.class).background(() ->
 			{
-				Thread.currentThread().setName("Background :: Snapshot");
+				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Snapshot");
 				
 				Data all = Data.map();
 				for( Consumer<Data> handler : createCallback )
@@ -127,7 +127,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 			
 			return Manager.of(Executor.class).background(() ->
 			{
-				Thread.currentThread().setName("Background :: Restore");
+				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Restore");
 				
 				Data all = Data.map();
 				for( Consumer<Data> handler : restoreCallback )

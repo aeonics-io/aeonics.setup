@@ -48,7 +48,7 @@ public class DefaultTimeout extends Manager<Timeout>
 		{
 			return Manager.of(Executor.class).background(() -> 
 			{
-				Thread.currentThread().setName("Background :: Timeout Manager");
+				Thread.currentThread().setName(Thread.currentThread().getName() + " :: Timeout Manager");
 				while(true)
 				{
 					long at = -1;

@@ -8,6 +8,7 @@ import java.util.function.Supplier;
 
 import aeonics.data.Data;
 import aeonics.manager.Config;
+import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
@@ -68,8 +69,11 @@ public class DefaultConfig extends Manager<Config>
 
 		public Data set(String type, String name, Object value)
 		{
-			Objects.requireNonNull(type);
-			Objects.requireNonNull(name);
+			if( type == null || type.isBlank() || name == null || name.isBlank() )
+			{
+				Manager.of(Logger.class).fine(Config.class, "Ignoring invalid config parameter '{}:{}={}'", type, name, value);
+				return Data.empty();
+			}
 			
 			Data data = Data.of(value);
 			synchronized(store)
@@ -178,15 +182,15 @@ public class DefaultConfig extends Manager<Config>
 			{
 				for( Map.Entry<String, String> entry : System.getenv().entrySet() )
 				{
-					String key = entry.getKey().replaceAll("[^a-zA-Z0-9_.-]", "");
-					if( !key.isBlank() && !key.replaceAll("[_.]", "").isBlank() )
+					String key = entry.getKey().replaceAll("[^a-zA-Z0-9_:.-]", "");
+					if( !key.isBlank() && !key.replaceAll("[_:.]", "").isBlank() )
 						instance.set(key, entry.getValue());
 				}
 				
 				for( Map.Entry<Object, Object> entry : System.getProperties().entrySet() )
 				{
-					String key = entry.getKey().toString().replaceAll("[^a-zA-Z0-9_.-]", "");
-					if( !key.isBlank() && !key.replaceAll("[_.]", "").isBlank() )
+					String key = entry.getKey().toString().replaceAll("[^a-zA-Z0-9_:.-]", "");
+					if( !key.isBlank() && !key.replaceAll("[_:.]", "").isBlank() )
 						instance.set(key, Data.of(entry.getValue().toString()));
 				}
 			});
