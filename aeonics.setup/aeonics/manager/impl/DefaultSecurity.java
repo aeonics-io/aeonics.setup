@@ -6,13 +6,17 @@ import java.math.BigInteger;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
@@ -301,6 +305,42 @@ public class DefaultSecurity extends Manager<Security>
 			catch(Exception e)
 			{
 				Manager.of(Logger.class).warning(Security.class, e);
+			}
+		}
+		
+		public synchronized Collection<Token> listTokens(User.Type user)
+		{
+			if( user == null || user == User.ANONYMOUS || user == User.SYSTEM ) return Collections.emptyList();
+			
+			try
+			{
+				String id = user.id();
+				Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Security.class, "token.storage").asString());
+				
+				if( storage == null )
+				{
+					return tokens.values().stream()
+						.filter(t -> t.isFor(id)) // select tokens for that user
+						.map(t -> new Token(t.export())) // create a copy
+						.collect(Collectors.toList());
+				}
+				else
+				{
+					Collection<Token> tokens = new ArrayList<>();
+					for( String token : storage.list("token/") )
+					{
+						Data m = storage.getData(token);
+						if( m == null || m.isEmpty() ) continue;
+						Token t = new Token(m);
+						if( t.isFor(id) ) tokens.add(t);
+					}
+					return tokens;
+				}
+			}
+			catch(Exception e)
+			{
+				Manager.of(Logger.class).warning(Security.class, e);
+				return Collections.emptyList();
 			}
 		}
 		

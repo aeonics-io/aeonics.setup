@@ -234,6 +234,11 @@ public class Main extends Plugin
 				.<User.Type>cast()
 				;
 			
+			new Multifactor.TOTP().template().create()
+				.name("Time-based one-time password")
+				.addRelation("roles", Role.SUPERADMIN)
+				.addRelation("groups", Group.ADMINISTRATORS);
+			
 			if( this.adminHash == null || this.adminSalt == null )
 			{
 				// hash/salt were not provided in system properties
