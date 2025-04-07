@@ -193,7 +193,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				{	
 					while( (ze = zip.getNextEntry()) != null )
 					{
-						Path p = Paths.get(ze.getName()).normalize();
+						Path p = Paths.get("/" + ze.getName()).normalize();
 						if( p.getNameCount() < 2 )
 						{
 							if( !ze.isDirectory() ) throw new IllegalArgumentException("The snapshot must contain only the root snapshot folder and no extra files on the side");
@@ -217,7 +217,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				{
 					while( (ze = zip.getNextEntry()) != null )
 					{
-						Path p = Paths.get(ze.getName()).normalize();
+						Path p = Paths.get("/" + ze.getName()).normalize();
 						if( p.getNameCount() < 2 || ze.isDirectory() ) continue;
 						
 						store.put(p.toString(), zip.readAllBytes());
