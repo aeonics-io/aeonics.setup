@@ -13,7 +13,6 @@ import aeonics.manager.Manager;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
 import aeonics.util.Callback;
-import aeonics.util.StringUtils;
 import aeonics.util.Tuples.Tuple;
 import aeonics.util.Functions.BiConsumer;
 import aeonics.util.Json;
@@ -134,11 +133,9 @@ public class DefaultConfig extends Manager<Config>
 		{
 			Map<String, Data> values = new HashMap<>();
 			
-			type = StringUtils.toLowerCase(type).replace('_', '.');
-			
 			synchronized(store)
 			{
-				String prefix = type + ":";
+				String prefix = sanitize(type) + ":";
 				for( Map.Entry<String, Tuple<Data, Tuple<Callback<Tuple<String, Data>, Config>, Parameter>>> entry : store.entrySet() )
 				{
 					if( entry.getKey().startsWith(prefix) )
@@ -176,21 +173,21 @@ public class DefaultConfig extends Manager<Config>
 		return super.template()
 			.summary("In memory configuration")
 			.description("Stores all the configuration parameters directly in memory. Environment variables and system properties are imported by default. "
-				+ "They will be split by '_' or '.' and converted to lower case: Entity_Type_NAME will be converted to the configuration parameter "
-				+ "entity type > name. This means that the 'name' part must not contain '_' or '.' characters.")
+				+ "They will be sanitized: Entity_Type_NAME will be converted to the configuration parameter "
+				+ "entity type > name. This means that the 'name' part must not contain non-alphanumeric characters.")
 			.onCreate((data, instance) -> 
 			{
 				for( Map.Entry<String, String> entry : System.getenv().entrySet() )
 				{
-					String key = entry.getKey().replaceAll("[^a-zA-Z0-9_:.-]", "");
-					if( !key.isBlank() && !key.replaceAll("[_:.]", "").isBlank() )
+					String key = Config.sanitize(entry.getKey());
+					if( !key.isBlank() && !key.replaceAll("\\.", "").isBlank() )
 						instance.set(key, entry.getValue());
 				}
 				
 				for( Map.Entry<Object, Object> entry : System.getProperties().entrySet() )
 				{
-					String key = entry.getKey().toString().replaceAll("[^a-zA-Z0-9_:.-]", "");
-					if( !key.isBlank() && !key.replaceAll("[_:.]", "").isBlank() )
+					String key = Config.sanitize(entry.getKey().toString());
+					if( !key.isBlank() && !key.replaceAll("\\.", "").isBlank() )
 						instance.set(key, Data.of(entry.getValue().toString()));
 				}
 			});

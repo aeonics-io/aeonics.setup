@@ -163,6 +163,13 @@ public class Main extends Plugin
 			.format(Parameter.Format.TEXT)
 			.optional(true)
 			.defaultValue(null));
+		
+		c.declare(Provider.Local.class, new Parameter("name")
+			.summary("Default Local Provider Name")
+			.description("The display name of the default local provider for authentication.")
+			.format(Parameter.Format.TEXT)
+			.optional(true)
+			.defaultValue("Username / Password"));
 	}
 	
 	private void afterLoad()
@@ -260,7 +267,7 @@ public class Main extends Plugin
 			
 			// initialize the default provider
 			Provider.Type provider = new Provider.Local().template().create()
-				.name("Local identity provider");
+				.name(Manager.of(Config.class).get(Provider.Local.class, "name").asString());
 			if( provider.join(context, user) != user )
 				Manager.of(Logger.class).severe(Security.class, "Default user could not join local provider");
 
@@ -317,11 +324,19 @@ public class Main extends Plugin
 	{
 		if( data == null || !data.isMap() ) return;
 		
-		Data config = Data.map();
+		Data config = Data.list();
 		Manager.of(Config.class).all().entrySet().forEach((entry) -> {
 			String type = entry.getKey();
-			entry.getValue().entrySet().forEach((subentry) -> {
-				config.put(Config.implodeName(type, subentry.getKey()), subentry.getValue());
+			entry.getValue().entrySet().forEach((subentry) ->
+			{
+				String name = subentry.getKey();
+				Parameter definition = Manager.of(Config.class).definition(type, name);
+				config.add(Data.map()
+					.put("name", Config.implodeName(type, subentry.getKey()))
+					.put("value", subentry.getValue())
+					.put("summary", definition.summary())
+					.put("description", definition.description())
+				);
 			});
 		});
 		data.put("config", config);
@@ -332,8 +347,8 @@ public class Main extends Plugin
 			Data entities = Data.list();
 			r.forEach((e) -> 
 			{
-				// we include all the entities including the SnapshotMode.NONE so that
-				// we keep a trace of those.
+				if( e.snapshotMode() == SnapshotMode.NONE )
+					return;
 				entities.add(e.snapshot());
 			});
 			if( entities.size() > 0 )
@@ -349,8 +364,15 @@ public class Main extends Plugin
 		if( !data.isEmpty("config") )
 		{
 			Config c = Manager.of(Config.class);
-			data.get("config").entrySet().forEach((entry) -> {
-				try { c.set(entry.getKey(), entry.getValue()); }
+			data.get("config").forEach(entry ->
+			{
+				try
+				{
+					c.set(entry.asString("name"), entry.get("value"));
+					c.definition(entry.asString("name"))
+						.description(entry.asString("description"))
+						.summary(entry.asString("summary"));
+				}
 				catch(Exception e) { Manager.of(Logger.class).config(Snapshot.class, e); }
 			});
 		}
