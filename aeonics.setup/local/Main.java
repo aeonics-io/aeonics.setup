@@ -30,6 +30,7 @@ public class Main extends Plugin
 	private String adminHash = null;
 	private String adminSalt = null;
 	private String vaultSalt = null;
+	private String adminMfa = null;
 	
 	public Main()
 	{
@@ -48,6 +49,11 @@ public class Main extends Plugin
 		if( vaultSalt == null || vaultSalt.isBlank() ) vaultSalt = System.getenv("AEONICS_SECURITY_VAULT_SALT");
 		if( vaultSalt == null || vaultSalt.isBlank() ) vaultSalt = null;
 		else System.clearProperty("AEONICS_SECURITY_VAULT_SALT");
+		
+		adminMfa = System.getProperty("AEONICS_SECURITY_ADMIN_MFA");
+		if( adminMfa == null || adminMfa.isBlank() ) adminMfa = System.getenv("AEONICS_SECURITY_ADMIN_MFA");
+		if( adminMfa == null || adminMfa.isBlank() ) adminMfa = null;
+		else System.clearProperty("AEONICS_SECURITY_ADMIN_MFA");
 	}
 	
 	public String summary() { return "Default System"; }
@@ -145,7 +151,7 @@ public class Main extends Plugin
 			.rule(Parameter.Rule.DIGIT)
 			.optional(true)
 			.min(1).max(5)
-			.defaultValue(50));
+			.defaultValue(65535));
 		
 		c.declare("aeonics.setup", new Parameter("initialized")
 			.summary("Default setup has been initialized")
@@ -241,10 +247,11 @@ public class Main extends Plugin
 				.<User.Type>cast()
 				;
 			
-			new Multifactor.TOTP().template().create()
+			Multifactor.Type mfa = new Multifactor.TOTP().template().create()
 				.name("Time-based one-time password")
 				.addRelation("roles", Role.SUPERADMIN)
-				.addRelation("groups", Group.ADMINISTRATORS);
+				.addRelation("groups", Group.ADMINISTRATORS)
+				.cast();
 			
 			if( this.adminHash == null || this.adminSalt == null )
 			{
@@ -264,6 +271,12 @@ public class Main extends Plugin
 			
 			Data context = Data.map().put("username", user.id()).put("hash", adminHash).put("salt", adminSalt);
 			adminHash = null; adminSalt = null;
+			
+			if( this.adminMfa != null )
+			{
+				mfa.enroll(user, Data.map().put("secret", Multifactor.TOTP.Type.secret(adminMfa)));
+				this.adminMfa = null;
+			}
 			
 			// initialize the default provider
 			Provider.Type provider = new Provider.Local().template().create()

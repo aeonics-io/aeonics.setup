@@ -12,6 +12,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Deque;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -19,11 +20,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
+import javax.net.ssl.ExtendedSSLSession;
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SNIServerName;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
@@ -524,7 +527,31 @@ public class DefaultNetwork extends Manager<Network>
 		
 		public String alpn() { return ""; }
 		
+		public String sni() { return ""; }
+		
 		public boolean active() { return !closed.get(); }
+		
+		public String toString()
+		{
+			try
+			{
+				SocketChannel channel = this.channel.get();
+				if( channel == null ) return "Unbounded " + (isClientMode() ? "client" : "server") + " connection " + this.hashCode();
+				
+				InetSocketAddress local = (InetSocketAddress) channel.getLocalAddress();
+				InetSocketAddress remote = (InetSocketAddress) channel.getRemoteAddress();
+				
+				if( local == null || remote == null ) return "Unbounded " + (isClientMode() ? "client" : "server") + " connection " + this.hashCode();
+				
+				if( isClientMode() )
+					return "[" + local.getAddress().getHostAddress() + ":" + local.getPort() + " --OUT--> " + remote.getAddress().getHostAddress() + ":" + remote.getPort() + "]";
+				else
+					return "[" + remote.getAddress().getHostAddress() + ":" + remote.getPort() + " --IN--> " + local.getAddress().getHostAddress() + ":" + local.getPort() + "]";
+			} catch(Exception e)
+			{
+				return "Unsettled " + (isClientMode() ? "client" : "server") + " connection " + this.hashCode();
+			}
+		}
 		
 		// =========================================
 		//
@@ -582,7 +609,6 @@ public class DefaultNetwork extends Manager<Network>
 	{
 		private ConcurrentLinkedQueue<byte[]> fifo = new ConcurrentLinkedQueue<byte[]>();
 		private Connection source;
-		private CompletionLock handshaking = new CompletionLock();
 		private SSLEngine ssl;
 		
 		private static final ByteBuffer EMPTY = ByteBuffer.allocate(0);
@@ -621,20 +647,20 @@ public class DefaultNetwork extends Manager<Network>
 					}
 					case FINISHED:
 					{
-						if( !ssl.getSession().isValid() || ssl.getSession().getId().length == 0 )
+						if( ssl.getSession() == null )
 							throw new SSLHandshakeException("Handshake failed");
 						
 						// prevent rejoin session because it keeps a cache for almost never used rejoin
-						ssl.getSession().invalidate();
-						handshaking.complete();
+						if( ssl.getSession().isValid() )
+							ssl.getSession().invalidate();
+						handshakeComplete.set(true);
 						
-						//if( read != null && read.hasRemaining() )
-						{
-							if( reading.get() )
-								read3(); // continue with remaining buffer
-							else
-								read(); // re-acquire read lock
-						}
+						if( reading.get() )
+							read3(); // continue with remaining buffer
+						else
+							read(); // re-acquire read lock
+						
+						Manager.of(Executor.class).normal(this::processBufferedWrites);
 						return;
 					}
 					case NEED_TASK:
@@ -669,6 +695,19 @@ public class DefaultNetwork extends Manager<Network>
 					}
 					default: throw new SSLHandshakeException("Unsupported handshake status: " + ssl.getHandshakeStatus());
 				}
+			}
+		}
+		
+		AtomicBoolean handshakeComplete = new AtomicBoolean(false);
+		private final ConcurrentLinkedQueue<ByteBuffer> writeBuffer = new ConcurrentLinkedQueue<>();
+		private void processBufferedWrites()
+		{
+			ByteBuffer out;
+			while( handshakeComplete.get() )
+			{
+				out = writeBuffer.poll();
+				if( out == null ) return;
+				write(out);
 			}
 		}
 
@@ -754,7 +793,7 @@ public class DefaultNetwork extends Manager<Network>
 		
 		private boolean read3() throws Exception
 		{
-			if( !handshaking.isComplete() )
+			if( !handshakeComplete.get() )
 			{
 				handshake(encrypted.get());
 				return true;
@@ -842,10 +881,10 @@ public class DefaultNetwork extends Manager<Network>
 			{
 				while( data.hasRemaining() )
 				{
-					while( !handshaking.isComplete() )
+					if( !handshakeComplete.get() )
 					{
-						try { handshaking.await(); }
-						catch(InterruptedException e) { throw new RuntimeException(e); }
+						writeBuffer.add(data);
+						return;
 					}
 					
 					try
@@ -857,12 +896,12 @@ public class DefaultNetwork extends Manager<Network>
 							
 							if( result.getStatus() != SSLEngineResult.Status.OK )
 								throw new IllegalStateException("Invalid SSLEngine state in wrap : " + result.getStatus());
-							
+
 							source.write(encrypted.flip());
 							
 							if( result.getHandshakeStatus() != HandshakeStatus.FINISHED && result.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING )
 							{
-								handshaking.reset();
+								handshakeComplete.set(false);
 								handshake(null);
 								continue;
 							}
@@ -891,7 +930,32 @@ public class DefaultNetwork extends Manager<Network>
 			return Objects.requireNonNullElse(ssl.getApplicationProtocol(), "");
 		}
 		
+		public String sni()
+		{
+			if( ssl == null ) return "";
+			
+			if( ssl.getSession() instanceof ExtendedSSLSession )
+			{
+				List<SNIServerName> sni = ((ExtendedSSLSession)ssl.getSession()).getRequestedServerNames();
+				if( sni == null || sni.isEmpty() )
+					return "";
+				
+				for( SNIServerName s : sni )
+				{
+					if( !(s instanceof SNIHostName) ) continue;
+					return ((SNIHostName)s).getAsciiName();
+				}
+			}
+			return "";
+		}
+		
 		public boolean active() { return source.active(); }
+		
+		public String toString() 
+		{
+			if( source == null ) return super.toString();
+			return source.toString();
+		}
 	}
 	
 	private static class ServerImplementation implements Server
@@ -951,7 +1015,11 @@ public class DefaultNetwork extends Manager<Network>
 			
 			TLS_Buffer buffer = pool.pollFirst();
 			if( buffer == null ) return new TLS_Buffer();
-			else return buffer;
+			else
+			{
+				buffer.idle = System.currentTimeMillis();
+				return buffer;
+			}
 		}
 		
 		// this is a fake timeout tracker because it will never expire.
@@ -1000,66 +1068,6 @@ public class DefaultNetwork extends Manager<Network>
 		{
 			idle = System.currentTimeMillis();
 			TLS_BufferPool.offer(this);
-		}
-	}
-	
-	private static class CompletionLock
-	{
-		private final ReentrantLock lock = new ReentrantLock();
-		private final Condition condition = lock.newCondition();
-		private volatile boolean isComplete = false;
-
-		public void await() throws InterruptedException
-		{
-			lock.lock();
-			try
-			{
-				while( !isComplete ) condition.await();
-			}
-			finally
-			{
-				lock.unlock();
-			}
-		}
-
-		public boolean isComplete()
-		{
-			lock.lock();
-			try
-			{
-				return isComplete;
-			}
-			finally
-			{
-				lock.unlock();
-			}
-		}
-
-		public void complete()
-		{
-			lock.lock();
-			try
-			{
-				isComplete = true;
-				condition.signalAll();
-			}
-			finally
-			{
-				lock.unlock();
-			}
-		}
-
-		public void reset()
-		{
-			lock.lock();
-			try
-			{
-				isComplete = false;
-			}
-			finally
-			{
-				lock.unlock();
-			}
 		}
 	}
 }
