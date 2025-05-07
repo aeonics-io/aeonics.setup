@@ -182,6 +182,7 @@ public class DefaultNetwork extends Manager<Network>
 			{
 				SocketChannel channel = c.channel();
 				if( channel.isConnectionPending() ) channel.finishConnect();
+				if( !channel.isConnected() ) throw new RuntimeException("Connection reset before complete.");
 				
 				String localAddress = ((InetSocketAddress) channel.getLocalAddress()).getAddress().getHostAddress();
 				int localPort = ((InetSocketAddress) channel.getLocalAddress()).getPort();

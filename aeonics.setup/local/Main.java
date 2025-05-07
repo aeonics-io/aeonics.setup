@@ -93,6 +93,8 @@ public class Main extends Plugin
 			Manager.replace(Lifecycle.class, instance);
 		}
 		
+		beforeBeforeLoad();
+		
 		Lifecycle.before(Phase.LOAD, this::beforeLoad);
 		Lifecycle.on(Phase.LOAD, this::onLoad);
 		Lifecycle.after(Phase.LOAD, this::afterLoad);
@@ -113,8 +115,12 @@ public class Main extends Plugin
 		Snapshot.onRestore(this::onRestore);
 	}
 	
-	private void beforeLoad()
+	private void beforeBeforeLoad()
 	{
+		// this needs to be set before other factories are set
+		// because some may declare config parameters
+		// -> this needs to run BEFORE the Lifecycle.before(Phase.LOAD) phase (or run first, but there is no order guarantee)
+		
 		Factory.add(new Console());
 		
 		manager(Config.class, DefaultConfig.class, false, null);
@@ -124,6 +130,11 @@ public class Main extends Plugin
 			Executor instance = new DefaultExecutor().template().create().name("Executor Manager");
 			Manager.replace(Executor.class, instance);
 		}
+	}
+	
+	private void beforeLoad()
+	{
+		/* nothing to do */
 	}
 	
 	private void onLoad()

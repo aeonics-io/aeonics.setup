@@ -280,6 +280,7 @@ public class DefaultSnapshot extends Manager<Snapshot>
 				catch(Exception e)
 				{
 					Manager.of(Logger.class).warning(Snapshot.class, "Could not initialize destination storage {}", value);
+					Manager.of(Logger.class).fine(Snapshot.class, e);
 					store = null;
 				}
 			}
