@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
@@ -67,7 +68,7 @@ public class DefaultNetwork extends Manager<Network>
 		
 		public Connection client(String remoteAddress, int remotePort, SecurityOptions options) throws IOException
 		{
-			try { initialized.await(); }
+			try{ /* wait for the background selector task to start */ initialized.await(); }
 			catch(InterruptedException e) { throw new RuntimeException(e); }
 			
 			SocketChannel channel = null;
@@ -95,7 +96,7 @@ public class DefaultNetwork extends Manager<Network>
 
 		public Server server(String localAddress, int localPort, SecurityOptions options) throws IOException
 		{
-			try { initialized.await(); }
+			try { /* wait for the background selector task to start */ initialized.await(); }
 			catch(InterruptedException e) { throw new RuntimeException(e); }
 			
 			ServerSocketChannel channel = null;
@@ -203,6 +204,7 @@ public class DefaultNetwork extends Manager<Network>
 			{
 				Manager.of(Logger.class).info(Network.class, e);
 				try { c.close(); } catch(Exception ex) { /* ignore */ };
+				while( c.connected.getCount() > 0 ) c.connected.countDown();
 			}
 		}
 		
@@ -426,7 +428,7 @@ public class DefaultNetwork extends Manager<Network>
 		
 		public void close() throws IOException 
 		{
-			if( closed.get() ) return;
+			if( !closed.compareAndSet(false, true) ) return;
 			
 			try
 			{
@@ -453,7 +455,10 @@ public class DefaultNetwork extends Manager<Network>
 			try
 			{
 				if( closed.get() ) throw new IOException("Connection closed");
-				try { connected.await(); }
+				try { 
+					while( !closed.get() && !connected.await(1, TimeUnit.MILLISECONDS) )
+						; // wait for connected unless it is closed
+				}
 				catch(InterruptedException e) { throw new RuntimeException(e); }
 				if( closed.get() ) throw new IOException("Connection closed");
 					
