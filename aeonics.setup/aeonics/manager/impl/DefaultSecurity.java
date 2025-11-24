@@ -5,7 +5,11 @@ import java.io.InputStream;
 import java.math.BigInteger;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.SecureRandom;
+import java.security.Signature;
+import java.security.spec.MGF1ParameterSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -19,7 +23,11 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.OAEPParameterSpec;
+import javax.crypto.spec.PSource;
 import javax.crypto.spec.SecretKeySpec;
 
 import aeonics.data.Data;
@@ -42,6 +50,9 @@ public class DefaultSecurity extends Manager<Security>
 {
 	private static class Implementation extends Security
 	{
+		private static SecureRandom random;
+		static { try { random = SecureRandom.getInstanceStrong(); } catch(Exception e) { random = null; /* ignore: there is nothing we can do about it */ } }
+		
 		// =========================================
 		//
 		// CRYPTO HASH / ENCRYPT / DECRYPT
@@ -102,10 +113,52 @@ public class DefaultSecurity extends Manager<Security>
 			}
 		}
 		
+		public String encrypt(byte[] value, PublicKey key)
+		{
+			try
+			{
+				Objects.requireNonNull(value);
+				Objects.requireNonNull(key);
+				
+				KeyGenerator keygen = KeyGenerator.getInstance("AES");
+				keygen.init(256, random);
+	            SecretKey symmetricKey = keygen.generateKey();
+				
+	            byte[] iv = new byte[12];
+	            random.nextBytes(iv);
+				Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+				cipher.init(Cipher.ENCRYPT_MODE, symmetricKey, new GCMParameterSpec(128, iv), random);
+				
+				Cipher rsa = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+		        rsa.init(Cipher.ENCRYPT_MODE, key, new OAEPParameterSpec(
+		        	"SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT), random);
+		        byte[] encKey = rsa.doFinal(symmetricKey.getEncoded());
+		        if( encKey.length > 0xFFFF ) throw new IllegalArgumentException("Key length overflow");
+		        
+				ByteArrayOutputStream tmp = new ByteArrayOutputStream();
+				tmp.write((encKey.length >>> 8) & 0xFF);
+				tmp.write(encKey.length & 0xFF);
+				tmp.write(encKey);
+				tmp.write((iv.length >> 8) & 0xFF);
+				tmp.write(iv.length & 0xFF);
+				tmp.write(iv);
+				tmp.write(cipher.doFinal(value));
+					
+				return Base64.getEncoder().encodeToString(tmp.toByteArray());
+			}
+			catch(Exception e)
+			{
+				throw new SecurityException("Encrypt failed");
+			}
+		}
+		
 		public byte[] decrypt(String value, byte[] key)
 		{
 			try
 			{
+				Objects.requireNonNull(value);
+		        Objects.requireNonNull(key);
+		        
 				byte[] decoded = Base64.getDecoder().decode(value);
 				byte[] nkey = normalizeKey(key);
 				Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -123,6 +176,65 @@ public class DefaultSecurity extends Manager<Security>
 			catch(Exception e)
 			{
 				throw new SecurityException("Decrypt failed");
+			}
+		}
+		
+		public byte[] decrypt(String value, PrivateKey key)
+		{
+			try
+			{
+				Objects.requireNonNull(value);
+		        Objects.requireNonNull(key);
+		        
+				byte[] decoded = Base64.getDecoder().decode(value);
+				
+				int encKeyLength = ((decoded[0] & 0xFF) << 8) | (decoded[1] & 0xFF);
+				byte[] encKey = Arrays.copyOfRange(decoded, 2, encKeyLength + 2);
+				int ivLength = ((decoded[encKeyLength + 2] & 0xFF) << 8) | (decoded[encKeyLength + 3] & 0xFF);
+				byte[] iv = Arrays.copyOfRange(decoded, encKeyLength + 4, encKeyLength + ivLength + 4);
+				
+				Cipher rsa = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+		        rsa.init(Cipher.DECRYPT_MODE, key, new OAEPParameterSpec(
+		        	"SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT), random);
+		        byte[] symmetricKey = rsa.doFinal(encKey);
+		        
+		        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+		        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(symmetricKey, "AES"), new GCMParameterSpec(128, iv), random);
+				
+		        int payloadStart = encKeyLength + ivLength + 4;
+		        byte[] payload = Arrays.copyOfRange(decoded, payloadStart, decoded.length);
+				return cipher.doFinal(payload);
+			}
+			catch(Exception e)
+			{
+				throw new SecurityException("Decrypt failed");
+			}
+		}
+		
+		public boolean verify(String signature, byte[] value, PublicKey key)
+		{
+			try
+			{
+				Signature sig = Signature.getInstance("SHA256withRSA");
+				sig.initVerify(key);
+				sig.update(value);
+				return sig.verify(Base64.getDecoder().decode(signature));
+			}
+			catch(Exception e) { return false; }
+		}
+		
+		public String sign(byte[] value, PrivateKey key)
+		{
+			try
+			{
+				Signature sig = Signature.getInstance("SHA256withRSA");
+				sig.initSign(key);
+				sig.update(value);
+				return Base64.getEncoder().encodeToString(sig.sign());
+			}
+			catch(Exception e)
+			{
+				throw new SecurityException("Signature failed");
 			}
 		}
 		
@@ -175,7 +287,7 @@ public class DefaultSecurity extends Manager<Security>
 		{
 			try
 			{
-				byte[] hash = MessageDigest.getInstance("SHA-256").digest((System.nanoTime() + "/" + SecureRandom.getInstanceStrong().nextLong()).getBytes());
+				byte[] hash = MessageDigest.getInstance("SHA-256").digest((System.nanoTime() + "/" + random.nextLong()).getBytes());
 				return parseBinaryHex(hash);
 			}
 			catch(Exception e)
