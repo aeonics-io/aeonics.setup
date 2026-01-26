@@ -45,6 +45,24 @@ public class DefaultVault extends Manager<Vault>
 			return Manager.of(Security.class).hash(key, salt);
 		}
 		
+		public void config(String key, Data value)
+		{
+			// move temporary local storage to real storage if it is set after setting some values
+			if( Config.implodeName(Vault.class, "storage").equals(key) )
+			{
+				Storage.Type storage = Registry.of(Storage.class).get(value.asString());
+				if( storage != null )
+				{
+					synchronized(store)
+					{
+						for( Map.Entry<String, String> e : store.entrySet() )
+							storage.put("vault/" + e.getKey(), e.getValue());
+						store.clear();
+					}
+				}
+			}
+		}
+		
 		private Map<String, String> store = new ConcurrentHashMap<>();
 		
 		public Data get(String name, String key) throws SecurityException

@@ -172,6 +172,14 @@ public class Main extends Plugin
 			.rule(Parameter.Rule.BOOLEAN)
 			.optional(true)
 			.defaultValue(false));
+		c.declare(Security.class, new Parameter("initialized")
+			.summary("Default security has been initialized")
+			.description("This parameter defines if the default built-in security has already been initialized (true) or if it should done when starting the run phase (false)."
+					+ " This is normally set by the system to detect an initial snapshot.")
+			.format(Parameter.Format.BOOLEAN)
+			.rule(Parameter.Rule.BOOLEAN)
+			.optional(true)
+			.defaultValue(false));
 		
 		c.declare("aeonics.manager.snapshot", new Parameter("current")
 			.summary("Snapshot currently loaded")
@@ -253,8 +261,9 @@ public class Main extends Plugin
 			Manager.replace(Logger.class, instance);
 		}
 		
-		// set default security settings if no security is present
-		if( !Registry.of(Provider.class).iterator().hasNext() )
+		// set default security settings if not initialized yet
+		Config c = Manager.of(Config.class);
+		if( !c.get(Security.class, "initialized").asBool() )
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
 			
@@ -307,6 +316,8 @@ public class Main extends Plugin
 				.addRelation("rule", new Rule.MatchAll().template().create().name("Match all"))
 				.<Policy.Type>cast()
 				;
+			
+			c.set(Security.class, "initialized", true);
 		}
 	}
 	
