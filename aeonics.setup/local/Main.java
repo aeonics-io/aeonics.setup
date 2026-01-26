@@ -187,6 +187,13 @@ public class Main extends Plugin
 			.format(Parameter.Format.TEXT)
 			.optional(true)
 			.defaultValue("Username / Password"));
+		
+		c.declare(Security.class, new Parameter("defaultadmin")
+			.summary("Default admin login")
+			.description("The login of the default admin user.")
+			.format(Parameter.Format.TEXT)
+			.optional(true)
+			.defaultValue("admin"));
 	}
 	
 	private void afterLoad()
@@ -251,7 +258,7 @@ public class Main extends Plugin
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
 			
-			User.Type user = new User().template().create(Data.map().put("parameters", Data.map().put("login", "admin").put("active", true)))
+			User.Type user = new User().template().create(Data.map().put("parameters", Data.map().put("login", Manager.of(Config.class).get(Security.class, "defaultadmin")).put("active", true)))
 				.name("Admin User")
 				.addRelation("roles", Role.SUPERADMIN)
 				.addRelation("groups", Group.ADMINISTRATORS)

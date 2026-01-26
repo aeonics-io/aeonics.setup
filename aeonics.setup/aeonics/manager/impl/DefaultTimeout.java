@@ -58,12 +58,12 @@ public class DefaultTimeout extends Manager<Timeout>
 					{
 						@SuppressWarnings("unchecked")
 						Tracker<Object> t = (Tracker<Object>) i.next();
-						if( t == null ) { i.remove(); continue; }
+						if( t == null ) { targets.remove(t); continue; }
 						
 						try
 						{
 							long d = t.delay();
-							if( d < 0 ) { i.remove(); continue; }
+							if( d < 0 ) { targets.remove(t); continue; }
 							if( d > 0 ) { if( at == -1 || (System.currentTimeMillis() + d) < at ) at = System.currentTimeMillis() + d; continue; }
 							// d == 0
 							Object target = t.target();
@@ -73,12 +73,12 @@ public class DefaultTimeout extends Manager<Timeout>
 								// so trigger the event in the normal executor
 								Manager.of(Executor.class).normal(() -> t.onExpire().trigger(target));
 							}
-							i.remove();
+							targets.remove(t);
 						}
 						catch(Exception e)
 						{
 							Manager.of(Logger.class).fine(Timeout.class, e);
-							i.remove();
+							targets.remove(t);
 						}
 					}
 					

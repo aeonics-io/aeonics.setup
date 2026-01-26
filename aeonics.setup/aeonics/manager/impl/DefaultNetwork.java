@@ -2,6 +2,7 @@ package aeonics.manager.impl;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
@@ -14,6 +15,7 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -249,6 +251,7 @@ public class DefaultNetwork extends Manager<Network>
 						
 						byte[] data = new byte[buffer.limit()]; 
 						buffer.get(data);
+						c.localBytesRead += data.length;
 						bytesRead.add(data.length);
 						c.fifo.offer(data);
 						c.resetTimeout();
@@ -400,10 +403,17 @@ public class DefaultNetwork extends Manager<Network>
 					})
 					.name("network");
 				
-				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN ) 
+				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN )
+				{
 					((Implementation)instance).task = ((Implementation)instance).task();
-				else 
-					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> { ((Implementation)instance).task = ((Implementation)instance).task(); }));
+					Manager.of(Timeout.class).watch(connectionTimeoutTracker);
+				}
+				else
+					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> 
+					{
+						((Implementation)instance).task = ((Implementation)instance).task();
+						Manager.of(Timeout.class).watch(connectionTimeoutTracker);
+					}));
 			});
 	}
 	
@@ -418,12 +428,19 @@ public class DefaultNetwork extends Manager<Network>
 		ConcurrentLinkedQueue<byte[]> fifo = new ConcurrentLinkedQueue<byte[]>();
 		private CountDownLatch connected = new CountDownLatch(1);
 		private AtomicBoolean closed = new AtomicBoolean(false);
+		private long localBytesRead = 0;
+		private long localBytesWritten = 0;
+		private long createdAt = System.currentTimeMillis();
 		
 		public ConnectionImplementation(SocketChannel channel, boolean clientMode)
 		{
 			this.channel.set(channel);
 			this.clientMode = clientMode;
-			this.setupTracker();
+			cnx.add(new WeakReference<>(this));
+			
+			// time to first activity is limited to 5sec so we decrease the 'lastActivity' accordingly 
+			lastActivity = System.currentTimeMillis() - Math.max(5000, ttl-5000);
+			Manager.of(Timeout.class).refresh();
 		}
 		
 		public void close() throws IOException 
@@ -432,13 +449,15 @@ public class DefaultNetwork extends Manager<Network>
 			
 			try
 			{
-				closed.set(true);
 				SelectableChannel c = channel.getAndSet(null);
 				if( c != null ) c.close();
 			}
+			catch(Exception e)
+			{
+				/* noop */
+			}
 			finally
 			{
-				Manager.of(Timeout.class).remove(tracker);
 				onClose().trigger();
 			}
 		}
@@ -481,6 +500,7 @@ public class DefaultNetwork extends Manager<Network>
 						}
 						else
 						{
+							localBytesWritten += count;
 							bytesWritten.add(count);
 							resetTimeout();
 						}
@@ -505,7 +525,7 @@ public class DefaultNetwork extends Manager<Network>
 
 		public boolean isSecure() { return false; }
 		
-		public void timeout(long ms) { ttl = Math.max(ms, 10); }
+		public void timeout(long ms) { ttl = Math.max(ms, 10); Manager.of(Timeout.class).refresh(); }
 		
 		public String clientIp()
 		{
@@ -542,73 +562,35 @@ public class DefaultNetwork extends Manager<Network>
 			try
 			{
 				SocketChannel channel = this.channel.get();
-				if( channel == null ) return "Unbounded " + (isClientMode() ? "client" : "server") + " connection " + this.hashCode();
+				InetSocketAddress a = (channel == null ? null : isClientMode() ? (InetSocketAddress) channel.getLocalAddress() : (InetSocketAddress) channel.getRemoteAddress());
+				InetSocketAddress b = (channel == null ? null : isClientMode() ? (InetSocketAddress) channel.getRemoteAddress() : (InetSocketAddress) channel.getLocalAddress());
 				
-				InetSocketAddress local = (InetSocketAddress) channel.getLocalAddress();
-				InetSocketAddress remote = (InetSocketAddress) channel.getRemoteAddress();
-				
-				if( local == null || remote == null ) return "Unbounded " + (isClientMode() ? "client" : "server") + " connection " + this.hashCode();
-				
-				if( isClientMode() )
-					return "[" + local.getAddress().getHostAddress() + ":" + local.getPort() + " --OUT--> " + remote.getAddress().getHostAddress() + ":" + remote.getPort() + "]";
-				else
-					return "[" + remote.getAddress().getHostAddress() + ":" + remote.getPort() + " --IN--> " + local.getAddress().getHostAddress() + ":" + local.getPort() + "]";
+				return
+					(isSecure() ? "Secure " : "Unsecure ") +
+					(isClientMode() ? "client" : "server") + " connection, " +
+					(active() ? channel == null ? "unbounded " : 
+						(a == null || a.getAddress() == null ? "[no-ip]" : a.getAddress() + ":" + a.getPort()) + 
+						(isClientMode() ? " -OUT-> " : " -IN-> ") + 
+						(b == null || b.getAddress() == null ? "[no-ip]" : b.getAddress() + ":" + b.getPort())
+						: "closed") + ", " +
+					"open at " + createdAt + ", sni '" + sni() + "', read " + localBytesRead + ", write " + localBytesWritten + ", id " + hashCode()
+					;
 			} catch(Exception e)
 			{
-				return "Unsettled " + (isClientMode() ? "client" : "server") + " connection " + this.hashCode();
+				return 
+					(isSecure() ? "Secure " : "Unsecure ") +
+					(isClientMode() ? "client" : "server") + " connection, " +
+					(active() ? "unsettled" : "closed") + ", " +
+					"open at " + createdAt + ", sni '" + sni() + "', read " + localBytesRead + ", write " + localBytesWritten + ", id " + hashCode()
+					;
 			}
 		}
-		
-		// =========================================
-		//
-		// TIMEOUT TRACKER
-		//
-		// =========================================
 		
 		private volatile long lastActivity = System.currentTimeMillis();
 		
 		public void resetTimeout() { lastActivity = System.currentTimeMillis(); }
 		
 		private long ttl = Manager.of(Config.class).get(Network.class, "timeout").asLong();
-		
-		private Tracker<ConnectionImplementation> tracker = null;
-		
-		private void setupTracker()
-		{
-			tracker = new Tracker<ConnectionImplementation>(this)
-			{
-				public long delay()
-				{
-					if( closed.get() ) return -1;
-					return Math.max(0, lastActivity + ttl - System.currentTimeMillis());
-				}
-			};
-			
-			tracker.onExpire().then((c, _tracker) ->
-			{
-				SocketChannel channel = c.channel();
-
-				try
-				{
-					String localAddress = ((InetSocketAddress) channel.getLocalAddress()).getAddress().getHostAddress();
-					int localPort = ((InetSocketAddress) channel.getLocalAddress()).getPort();
-					String remoteAddress = ((InetSocketAddress) channel.getRemoteAddress()).getAddress().getHostAddress();
-					int remotePort = ((InetSocketAddress) channel.getRemoteAddress()).getPort();
-					
-					if( isClientMode() )
-						Manager.of(Logger.class).fine(Network.class, "Timeout for connection {}:{} -> {}:{}", localAddress, localPort, remoteAddress, remotePort);
-					else
-						Manager.of(Logger.class).fine(Network.class, "Timeout for connection {}:{} -> {}:{}", remoteAddress, remotePort, localAddress, localPort);
-					c.close();
-				}
-				catch(Exception e)
-				{
-					/* noop */
-				}
-			});
-			
-			Manager.of(Timeout.class).watch(tracker);
-		}
 	}
 	
 	private static class SecureConnectionImplementation implements Connection
@@ -959,8 +941,36 @@ public class DefaultNetwork extends Manager<Network>
 		
 		public String toString() 
 		{
-			if( source == null ) return super.toString();
-			return source.toString();
+			if( this.source == null ) return super.toString();
+			if( !(this.source instanceof ConnectionImplementation) )
+				return this.source.toString();
+			
+			ConnectionImplementation x = (ConnectionImplementation) this.source;
+			try
+			{
+				SocketChannel channel = x.channel.get();
+				InetSocketAddress a = (channel == null ? null : isClientMode() ? (InetSocketAddress) channel.getLocalAddress() : (InetSocketAddress) channel.getRemoteAddress());
+				InetSocketAddress b = (channel == null ? null : isClientMode() ? (InetSocketAddress) channel.getRemoteAddress() : (InetSocketAddress) channel.getLocalAddress());
+				
+				return
+					(isSecure() ? "Secure " : "Unsecure ") +
+					(isClientMode() ? "client" : "server") + " connection, " +
+					(active() ? channel == null ? "unbounded " : 
+						(a == null || a.getAddress() == null ? "[no-ip]" : a.getAddress() + ":" + a.getPort()) + 
+						(isClientMode() ? " -OUT-> " : " -IN-> ") + 
+						(b == null || b.getAddress() == null ? "[no-ip]" : b.getAddress() + ":" + b.getPort())
+						: "closed") + ", " +
+					"open at " + x.createdAt + ", sni '" + sni() + "', read " + x.localBytesRead + ", write " + x.localBytesWritten + ", id " + hashCode()
+					;
+			} catch(Exception e)
+			{
+				return 
+					(isSecure() ? "Secure " : "Unsecure ") +
+					(isClientMode() ? "client" : "server") + " connection, " +
+					(active() ? "unsettled" : "closed") + ", " +
+					"open at " + x.createdAt + ", sni '" + sni() + "', read " + x.localBytesRead + ", write " + x.localBytesWritten + ", id " + hashCode()
+					;
+			}
 		}
 	}
 	
@@ -1002,6 +1012,61 @@ public class DefaultNetwork extends Manager<Network>
 	
 	// =========================================
 	//
+	// TIMEOUT TRACKER
+	//
+	// =========================================
+	
+	private static final Queue<WeakReference<ConnectionImplementation>> cnx = new ConcurrentLinkedQueue<WeakReference<ConnectionImplementation>>();
+	private static final Tracker<Void> connectionTimeoutTracker = new Tracker<Void>(null)
+	{
+		private long max = Manager.of(Config.class).get(Network.class, "timeout").asLong();
+		public long delay()
+		{
+			if( cnx.isEmpty() ) return max;
+			
+			long shortest = max;
+			
+			for( WeakReference<ConnectionImplementation> w : cnx )
+			{
+				if( w == null ) continue;
+				ConnectionImplementation c = w.get();
+				if( c == null || !c.active() ) { cnx.remove(w); continue; }
+				
+				long delay = c.lastActivity + c.ttl - System.currentTimeMillis();
+				if( delay <= 0 )
+				{
+					try
+					{
+						SocketChannel channel = c.channel();
+						String localAddress = ((InetSocketAddress) channel.getLocalAddress()).getAddress().getHostAddress();
+						int localPort = ((InetSocketAddress) channel.getLocalAddress()).getPort();
+						String remoteAddress = ((InetSocketAddress) channel.getRemoteAddress()).getAddress().getHostAddress();
+						int remotePort = ((InetSocketAddress) channel.getRemoteAddress()).getPort();
+						
+						if( c.isClientMode() )
+							Manager.of(Logger.class).fine(Network.class, "Timeout for connection {}:{} -> {}:{}", localAddress, localPort, remoteAddress, remotePort);
+						else
+							Manager.of(Logger.class).fine(Network.class, "Timeout for connection {}:{} -> {}:{}", remoteAddress, remotePort, localAddress, localPort);
+						c.close();
+					}
+					catch(Exception e)
+					{
+						// retry force close
+						try { c.close(); } catch(Exception e2) { /* noop */ }
+					}
+					
+					cnx.remove(w);
+					continue;
+				}
+				else if( delay < shortest ) shortest = delay;
+			}
+			
+			return Math.max(1, shortest);
+		}
+	};
+			
+	// =========================================
+	//
 	// SHARED BYTEBUFFER POOL FOR TLS
 	//
 	// =========================================
@@ -1032,7 +1097,7 @@ public class DefaultNetwork extends Manager<Network>
 		// instead, we perform the cleanup logic directly here because it is cheap
 		private static Tracker<Void> tracker = new Tracker<Void>(null)
 		{
-			private long max = 60_000_000; // 1min
+			private long max = 60_000; // 1min
 			public long delay()
 			{
 				if( pool.isEmpty() ) return max;

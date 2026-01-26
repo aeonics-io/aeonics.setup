@@ -1,16 +1,20 @@
 package aeonics.manager.impl;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 import aeonics.data.Data;
 import aeonics.entity.Entity;
+import aeonics.entity.Registry;
+import aeonics.entity.Storage;
+import aeonics.manager.Config;
 import aeonics.manager.Manager;
 import aeonics.manager.Security;
 import aeonics.manager.Snapshot;
 import aeonics.manager.Vault;
+import aeonics.template.Parameter;
 import aeonics.template.Template;
 import aeonics.util.CheckCaller;
 import aeonics.util.Json;
@@ -41,13 +45,13 @@ public class DefaultVault extends Manager<Vault>
 			return Manager.of(Security.class).hash(key, salt);
 		}
 		
-		private Map<String, String> store = new HashMap<>();
+		private Map<String, String> store = new ConcurrentHashMap<>();
 		
 		public Data get(String name, String key) throws SecurityException
 		{
 			Objects.requireNonNull(name);
 			
-			if( name.length() > 0 && name.charAt(0) == '#' )
+			if( name.length() > 0 && name.charAt(0) == '_' )
 			{
 				try { CheckCaller.require(this.getClass(), "get", 0, true); }
 				catch(IllegalCallerException e) { throw new SecurityException("Name reserved for owning entity."); }
@@ -58,7 +62,12 @@ public class DefaultVault extends Manager<Vault>
 			name = obfuscate(name);
 			key = obfuscate(key);
 			
-			String value = store.get(name);
+			Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Vault.class, "storage").asString());
+			String value = null;
+			if( storage == null )
+				value = store.get(name);
+			else
+				value = storage.getString("vault/" + name);
 			if( value == null ) return Data.empty();
 			
 			return Json.decode(Manager.of(Security.class).decrypt(value, key));
@@ -68,7 +77,7 @@ public class DefaultVault extends Manager<Vault>
 		{
 			Objects.requireNonNull(name);
 			
-			if( name.length() > 0 && name.charAt(0) == '#' )
+			if( name.length() > 0 && name.charAt(0) == '_' )
 			{
 				try { CheckCaller.require(this.getClass(), "set", 0, true); }
 				catch(IllegalCallerException e) { throw new SecurityException("Name reserved for owning entity."); }
@@ -80,7 +89,12 @@ public class DefaultVault extends Manager<Vault>
 			name = obfuscate(name);
 			key = obfuscate(key);
 			
-			String existing = store.get(name);
+			Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Vault.class, "storage").asString());
+			String existing = null;
+			if( storage == null )
+				existing = store.get(name);
+			else
+				existing = storage.getString("vault/" + name);
 			if( existing != null )
 			{
 				// try to decrypt to ensure the key matches
@@ -89,7 +103,10 @@ public class DefaultVault extends Manager<Vault>
 			
 			synchronized(store)
 			{
-				store.put(name, Manager.of(Security.class).encrypt(value.asString(), key));
+				if( storage == null )
+					store.put(name, Manager.of(Security.class).encrypt(value.asString(), key));
+				else
+					storage.put("vault/" + name, Manager.of(Security.class).encrypt(value.asString(), key));
 			}
 		}
 		
@@ -97,7 +114,7 @@ public class DefaultVault extends Manager<Vault>
 		{
 			Objects.requireNonNull(name);
 			
-			if( name.length() > 0 && name.charAt(0) == '#' )
+			if( name.length() > 0 && name.charAt(0) == '_' )
 			{
 				try { CheckCaller.require(this.getClass(), "remove", 0, true); }
 				catch(IllegalCallerException e) { throw new SecurityException("Name reserved for owning entity."); }
@@ -108,7 +125,12 @@ public class DefaultVault extends Manager<Vault>
 			name = obfuscate(name);
 			key = obfuscate(key);
 			
-			String value = store.get(name);
+			Storage.Type storage = Registry.of(Storage.class).get(Manager.of(Config.class).get(Vault.class, "storage").asString());
+			String value = null;
+			if( storage == null )
+				value = store.get(name);
+			else
+				value = storage.getString("vault/" + name);
 			if( value == null ) return;
 			
 			// try to decrypt to ensure the key matches
@@ -116,7 +138,10 @@ public class DefaultVault extends Manager<Vault>
 			
 			synchronized(store)
 			{
-				store.remove(name);
+				if( storage == null )
+					store.remove(name);
+				else
+					storage.remove("vault/" + name);
 			}
 		}
 
@@ -125,7 +150,7 @@ public class DefaultVault extends Manager<Vault>
 			try { CheckCaller.require(owner.getClass(), null, 0, true); }
 			catch(IllegalCallerException e) { throw new SecurityException("This method can only be called from the owning entity"); }
 			
-			return get("#"+owner.type()+"@"+owner.id()+":"+name, owner.id());
+			return get("_"+owner.type()+"_"+owner.id()+"_"+name, owner.id());
 		}
 
 		public void set(String name, Data value, Entity owner) throws SecurityException
@@ -133,7 +158,7 @@ public class DefaultVault extends Manager<Vault>
 			try { CheckCaller.require(owner.getClass(), null, 0, true); }
 			catch(IllegalCallerException e) { throw new SecurityException("This method can only be called from the owning entity"); }
 			
-			set("#"+owner.type()+"@"+owner.id()+":"+name, value, owner.id());
+			set("_"+owner.type()+"_"+owner.id()+"_"+name, value, owner.id());
 		}
 
 		public void remove(String name, Entity owner) throws SecurityException
@@ -141,7 +166,7 @@ public class DefaultVault extends Manager<Vault>
 			try { CheckCaller.require(owner.getClass(), null, 0, true); }
 			catch(IllegalCallerException e) { throw new SecurityException("This method can only be called from the owning entity"); }
 			
-			remove("#"+owner.type()+"@"+owner.id()+":"+name, owner.id());
+			remove("_"+owner.type()+"_"+owner.id()+"_"+name, owner.id());
 		}
 	}
 	
@@ -154,6 +179,12 @@ public class DefaultVault extends Manager<Vault>
 		return super.template()
 			.summary("Simple vault")
 			.description("This vault implementation stores data in memory and offers class instance access protection.")
+			.config(Vault.class, new Parameter("storage")
+				.summary("Storage")
+				.description("The name or id of the storage for encrypted data. If the storage does not exist, a local temporary (ouf-of-storage) location is used instead.")
+				.format(Parameter.Format.TEXT)
+				.optional(true)
+				.defaultValue(Data.empty()))
 			.onCreate((config, instance) ->
 			{
 				// undocumented parameter on purpose
