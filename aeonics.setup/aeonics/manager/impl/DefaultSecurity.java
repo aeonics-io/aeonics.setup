@@ -2,13 +2,12 @@ package aeonics.manager.impl;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.math.BigInteger;
-import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Signature;
+import java.security.spec.KeySpec;
 import java.security.spec.MGF1ParameterSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,15 +17,19 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
 import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.OAEPParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PSource;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -45,6 +48,7 @@ import aeonics.manager.Timeout.Tracker;
 import aeonics.template.Parameter;
 import aeonics.template.Template;
 import aeonics.util.Callback;
+import aeonics.util.Tuples.Tuple;
 
 public class DefaultSecurity extends Manager<Security>
 {
@@ -52,13 +56,15 @@ public class DefaultSecurity extends Manager<Security>
 	{
 		private static SecureRandom random;
 		static { try { random = SecureRandom.getInstanceStrong(); } catch(Exception e) { random = null; /* ignore: there is nothing we can do about it */ } }
-		
+
+		private byte[] pepper = null;
+
 		// =========================================
 		//
 		// CRYPTO HASH / ENCRYPT / DECRYPT
 		//
 		// =========================================
-		
+
 		private static final int keySize = 32;
 		
 		/**
@@ -238,43 +244,35 @@ public class DefaultSecurity extends Manager<Security>
 			}
 		}
 		
-		public String hash(InputStream value)
+		public String hash(byte[] value, byte[] salt, byte[] pepperOverride)
 		{
 			try
 			{
-				MessageDigest md = MessageDigest.getInstance("SHA-256");
-				try( DigestInputStream dis = new DigestInputStream(value, md) )
+				int rounds = Manager.of(Config.class).get(Security.class, "hash.rounds").asInt();
+				if( rounds < 10_000 ) rounds = 100_000;
+
+				// convert byte[] to char[] using ISO-8859-1 (1:1 byte-to-char mapping)
+				char[] password = new char[value.length];
+				for( int i = 0; i < value.length; i++ ) password[i] = (char)(value[i] & 0xFF);
+
+				PBEKeySpec spec = new PBEKeySpec(password, salt != null ? salt : new byte[0], rounds, 256);
+				Arrays.fill(password, '\0');
+
+				SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+				byte[] hash = skf.generateSecret(spec).getEncoded();
+				spec.clearPassword();
+
+				// apply pepper via HMAC: explicit pepper takes priority, then instance pepper
+				byte[] effectivePepper = pepperOverride != null ? pepperOverride : pepper;
+				if( effectivePepper != null )
 				{
-					byte[] buffer = new byte[8192];
-					while( dis.read(buffer) != -1 ); // process all data
+					Mac mac = Mac.getInstance("HmacSHA256");
+					mac.init(new SecretKeySpec(effectivePepper, "HmacSHA256"));
+					byte[] peppered = mac.doFinal(hash);
+					Arrays.fill(hash, (byte)0);
+					hash = peppered;
 				}
-				
-				// first pass
-				byte[] hash = md.digest();
-				
-				int rounds = 10_000 + new BigInteger(hash).mod(BigInteger.valueOf(10_000)).intValue();
-				for( ; rounds > 0; rounds-- ) hash = md.digest(hash);
-				return parseBinaryHex(hash);
-			}
-			catch(Exception e)
-			{
-				throw new RuntimeException("Hash failed");
-			}
-		}
-		
-		public String hash(byte[] value, byte[] salt)
-		{
-			try
-			{
-				MessageDigest md = MessageDigest.getInstance("SHA-256");
-				
-				if( salt != null ) md.update(salt);
-				
-				// first pass
-				byte[] hash = md.digest(value);
-				
-				int rounds = 10_000 + new BigInteger(hash).mod(BigInteger.valueOf(10_000)).intValue();
-				for( ; rounds > 0; rounds-- ) hash = md.digest(hash);
+
 				return parseBinaryHex(hash);
 			}
 			catch(Exception e)
@@ -311,10 +309,64 @@ public class DefaultSecurity extends Manager<Security>
 		
 		// =========================================
 		//
+		// AUTHENTICATION RATE LIMITING
+		//
+		// =========================================
+
+		private final Map<String, Tuple<Integer, Long>> throttle = new ConcurrentHashMap<>();
+		private final AtomicBoolean throttleTrackerActive = new AtomicBoolean(false);
+
+		public boolean isLocked(String userId)
+		{
+			if( userId == null || userId.isBlank() ) return false;
+			if( User.ANONYMOUS.id().equals(userId) || User.SYSTEM.id().equals(userId) ) return false;
+
+			Tuple<Integer, Long> state = throttle.get(userId);
+			if( state == null ) return false;
+
+			return state.b > System.currentTimeMillis();
+		}
+
+		public void recordFailedAuthentication(String userId)
+		{
+			if( userId == null || userId.isBlank() ) return;
+			if( User.ANONYMOUS.id().equals(userId) || User.SYSTEM.id().equals(userId) ) return;
+
+			AtomicBoolean shouldWakeTracker = new AtomicBoolean(false);
+
+			throttle.compute(userId, (key, current) ->
+			{
+				int attempts = (current == null) ? 1 : current.a + 1;
+				long lockUntil = 0;
+
+				if( attempts > 3 )
+				{
+					long lockDuration = Math.min((attempts - 3) * 60_000L, 300_000L);
+					lockUntil = System.currentTimeMillis() + lockDuration;
+					Manager.of(Logger.class).warning(Security.class, "Authentication throttled for user " + userId);
+					shouldWakeTracker.set(true);
+				}
+
+				return Tuple.of(attempts, lockUntil);
+			});
+
+			if( shouldWakeTracker.get() && throttleTrackerActive.compareAndSet(false, true) )
+				Manager.of(Timeout.class).refresh();
+		}
+
+		public void recordSuccessfulAuthentication(String userId)
+		{
+			if( userId == null || userId.isBlank() ) return;
+			if( User.ANONYMOUS.id().equals(userId) || User.SYSTEM.id().equals(userId) ) return;
+			throttle.remove(userId);
+		}
+
+		// =========================================
+		//
 		// TOKEN RELATED
 		//
 		// =========================================
-		
+
 		private Map<String, Token> tokens = new ConcurrentHashMap<>();
 		
 		public synchronized Token generateToken(User.Type user, long validity, boolean exclusive, String... scopes)
@@ -491,9 +543,45 @@ public class DefaultSecurity extends Manager<Security>
 						else min.set(Math.min(min.get(), t.notAfter() - now));
 					}
 				}
-				
+
 				if( min.get() <= 0 ) min.set(300_000);
 				next = now + min.get();
+			}
+		};
+
+		private final Tracker<Void> throttleTracker = new Tracker<Void>("Security Auth Throttle Tracker")
+		{
+			public long delay()
+			{
+				if( throttle.isEmpty() )
+				{
+					throttleTrackerActive.set(false);
+					return Long.MAX_VALUE / 2;
+				}
+
+				long now = System.currentTimeMillis();
+				long shortest = Long.MAX_VALUE / 2;
+
+				var it = throttle.entrySet().iterator();
+				while( it.hasNext() )
+				{
+					var entry = it.next();
+					Tuple<Integer, Long> state = entry.getValue();
+					if( state.b <= now )
+					{
+						it.remove();
+						continue;
+					}
+					long remaining = state.b - now;
+					if( remaining < shortest ) shortest = remaining;
+				}
+
+				if( throttle.isEmpty() )
+				{
+					throttleTrackerActive.set(false);
+					return Long.MAX_VALUE / 2;
+				}
+				return Math.max(1, shortest);
 			}
 		};
 	}
@@ -507,20 +595,42 @@ public class DefaultSecurity extends Manager<Security>
 		return super.template()
 			.summary("Security manager")
 			.description("Security layer that manages tokens locally. "
-				+ "Hash functions are variable-iteration SHA-256. "
-				+ "Encryption is performed using AES/GCM/NoPadding with an enforced key size of 265 bits.")
+				+ "Hash functions use PBKDF2WithHmacSHA256 with optional HMAC pepper. "
+				+ "Encryption is performed using AES/GCM/NoPadding with an enforced key size of 256 bits.")
 			.config(Security.class, new Parameter("token.storage")
 				.summary("Token storage")
 				.description("The name or id of the storage for access tokens. If the storage does not exist, a local temporary (ouf-of-storage) location is used instead.")
 				.format(Parameter.Format.TEXT)
 				.optional(true)
 				.defaultValue(Data.empty()))
+			.config(Security.class, new Parameter("hash.rounds")
+				.summary("Hash iteration count")
+				.description("The number of PBKDF2 iterations for password hashing. Higher values increase brute-force resistance but consume more CPU. Minimum: 10000 for constrained devices, recommended: 600000 for dedicated servers.")
+				.format(Parameter.Format.NUMBER)
+				.rule(Parameter.Rule.DIGIT)
+				.optional(true)
+				.defaultValue(100_000))
 			.onCreate((data, instance) ->
 			{
-				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN ) 
-					Manager.of(Timeout.class).watch(((Implementation)instance).tracker);
+				// load pepper from config data (passed from Main.java via env var)
+				String pepperValue = data.asString("pepper");
+				if( pepperValue != null && !pepperValue.isBlank() )
+					((Implementation)instance).pepper = pepperValue.getBytes(java.nio.charset.StandardCharsets.UTF_8);
 				else
-					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> { Manager.of(Timeout.class).watch(((Implementation)instance).tracker); }));
+					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> { Manager.of(Logger.class).warning(Security.class, "No hash pepper configured. Set AEONICS_SECURITY_HASH_PEPPER for production use."); }));
+
+				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN )
+				{
+					Manager.of(Timeout.class).watch(((Implementation)instance).tracker);
+					Manager.of(Timeout.class).watch(((Implementation)instance).throttleTracker);
+				}
+				else
+				{
+					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> {
+						Manager.of(Timeout.class).watch(((Implementation)instance).tracker);
+						Manager.of(Timeout.class).watch(((Implementation)instance).throttleTracker);
+					}));
+				}
 			});
 	}
 }

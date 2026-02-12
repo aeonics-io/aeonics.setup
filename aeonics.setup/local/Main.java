@@ -30,6 +30,7 @@ public class Main extends Plugin
 	private String adminHash = null;
 	private String adminSalt = null;
 	private String vaultSalt = null;
+	private String hashPepper = null;
 	private String adminMfa = null;
 	
 	public Main()
@@ -49,7 +50,12 @@ public class Main extends Plugin
 		if( vaultSalt == null || vaultSalt.isBlank() ) vaultSalt = System.getenv("AEONICS_SECURITY_VAULT_SALT");
 		if( vaultSalt == null || vaultSalt.isBlank() ) vaultSalt = null;
 		else System.clearProperty("AEONICS_SECURITY_VAULT_SALT");
-		
+
+		hashPepper = System.getProperty("AEONICS_SECURITY_HASH_PEPPER");
+		if( hashPepper == null || hashPepper.isBlank() ) hashPepper = System.getenv("AEONICS_SECURITY_HASH_PEPPER");
+		if( hashPepper == null || hashPepper.isBlank() ) hashPepper = null;
+		else System.clearProperty("AEONICS_SECURITY_HASH_PEPPER");
+
 		adminMfa = System.getProperty("AEONICS_SECURITY_ADMIN_MFA");
 		if( adminMfa == null || adminMfa.isBlank() ) adminMfa = System.getenv("AEONICS_SECURITY_ADMIN_MFA");
 		if( adminMfa == null || adminMfa.isBlank() ) adminMfa = null;
@@ -140,7 +146,7 @@ public class Main extends Plugin
 	private void onLoad()
 	{
 		manager(Snapshot.class, DefaultSnapshot.class, false, null);
-		manager(Security.class, DefaultSecurity.class, false, null);
+		manager(Security.class, DefaultSecurity.class, false, Data.map().put("pepper", hashPepper));
 		manager(Vault.class, DefaultVault.class, false, Data.map().put("salt", vaultSalt));
 		manager(Monitor.class, DefaultMonitor.class, false, null);
 		manager(Scheduler.class, DefaultScheduler.class, false, null);
@@ -152,6 +158,7 @@ public class Main extends Plugin
 		DefaultLogger.register();
 		
 		vaultSalt = null;
+		hashPepper = null;
 		
 		Config c = Manager.of(Config.class);
 		
