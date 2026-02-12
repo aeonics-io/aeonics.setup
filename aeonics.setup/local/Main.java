@@ -274,7 +274,7 @@ public class Main extends Plugin
 				.<User.Type>cast()
 				;
 			
-			Multifactor.Type mfa = new Multifactor.TOTP().template().create()
+			Multifactor.Type mfa = new Multifactor.TOTP().template().create(Data.map().put("id", "10000000-2100000000000000"))
 				.name("Time-based one-time password")
 				.addRelation("roles", Role.SUPERADMIN)
 				.addRelation("groups", Group.ADMINISTRATORS)

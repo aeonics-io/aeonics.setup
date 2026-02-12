@@ -1017,7 +1017,7 @@ public class DefaultNetwork extends Manager<Network>
 	// =========================================
 	
 	private static final Queue<WeakReference<ConnectionImplementation>> cnx = new ConcurrentLinkedQueue<WeakReference<ConnectionImplementation>>();
-	private static final Tracker<Void> connectionTimeoutTracker = new Tracker<Void>(null)
+	private static final Tracker<Void> connectionTimeoutTracker = new Tracker<Void>("Network Connection Timeout Tracker")
 	{
 		private long max = Manager.of(Config.class).get(Network.class, "timeout").asLong();
 		public long delay()
@@ -1095,7 +1095,7 @@ public class DefaultNetwork extends Manager<Network>
 		
 		// this is a fake timeout tracker because it will never expire.
 		// instead, we perform the cleanup logic directly here because it is cheap
-		private static Tracker<Void> tracker = new Tracker<Void>(null)
+		private static Tracker<Void> tracker = new Tracker<Void>("Network Buffer Idle Tracker")
 		{
 			private long max = 60_000; // 1min
 			public long delay()

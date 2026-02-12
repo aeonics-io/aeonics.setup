@@ -41,7 +41,7 @@ public class DefaultMonitor extends Manager<Monitor>
 		.description("This origin entity collects monioring metrics at the interval defined by the monitor manager and feeds them as data in the system.")
 		.create(Data.map().put("id", "10000000-2000000000000000")
 			.put("parameters", Data.map().put("rule", "RRULE:FREQ=SECONDLY;INTERVAL=" + (Manager.of(Config.class).get(Monitor.class, "window").asLong() / 1000))))
-		.name("Monitoring")
+		.name("Metrics Collector")
 		.internal(true);
 	
 	static

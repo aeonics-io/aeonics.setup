@@ -456,7 +456,7 @@ public class DefaultSecurity extends Manager<Security>
 			}
 		}
 		
-		private Tracker<Void> tracker = new Tracker<Void>(null) 
+		private Tracker<Void> tracker = new Tracker<Void>("Security Token Timeout Tracker") 
 		{
 			private long next = 0;
 			public long delay()
