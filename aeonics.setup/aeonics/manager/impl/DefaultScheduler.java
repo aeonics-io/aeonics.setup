@@ -64,8 +64,6 @@ public class DefaultScheduler extends Manager<Scheduler>
 						Manager.of(Executor.class).normal(() -> c.accept(now));
 						future = c.next(true);
 					}
-					else
-						Manager.of(Logger.class).finest(Scheduler.class, "Task {} ({}) is scheduled for {}", c.id(), c.name(), future);
 					
 					if( next == null || (future != null && future.isBefore(next)) )
 						next = future;
@@ -82,8 +80,6 @@ public class DefaultScheduler extends Manager<Scheduler>
 						i.remove();
 						continue;
 					}
-					else
-						Manager.of(Logger.class).finest(Scheduler.class, "One shot task is scheduled for {}", t.a);
 					
 					if( next == null || t.a.isBefore(next) )
 						next = t.a;
@@ -110,7 +106,6 @@ public class DefaultScheduler extends Manager<Scheduler>
 							long ms = ChronoUnit.MILLIS.between(now, next);
 							if( ms <= 0 ) continue;
 							
-							Manager.of(Logger.class).finest(Scheduler.class, "Next task scheduled at {}. Sleeping for {}ms.", next, ms);
 							locker.wait(ms);
 						}
 					}

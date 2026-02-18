@@ -331,6 +331,7 @@ public class DefaultSecurity extends Manager<Security>
 			if( userId == null || userId.isBlank() ) return;
 			if( User.ANONYMOUS.id().equals(userId) || User.SYSTEM.id().equals(userId) ) return;
 
+			Manager.of(Logger.class).log(Logger.WARNING+1, Security.class, "Failed authentication attempt for " + userId);
 			AtomicBoolean shouldWakeTracker = new AtomicBoolean(false);
 
 			throttle.compute(userId, (key, current) ->
@@ -357,6 +358,8 @@ public class DefaultSecurity extends Manager<Security>
 		{
 			if( userId == null || userId.isBlank() ) return;
 			if( User.ANONYMOUS.id().equals(userId) || User.SYSTEM.id().equals(userId) ) return;
+			
+			Manager.of(Logger.class).log(Logger.FINE+1, Security.class, "Authentication success for " + userId);
 			throttle.remove(userId);
 		}
 
