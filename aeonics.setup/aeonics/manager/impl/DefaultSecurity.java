@@ -1,13 +1,12 @@
 package aeonics.manager.impl;
 
 import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Signature;
-import java.security.spec.KeySpec;
 import java.security.spec.MGF1ParameterSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -272,7 +271,7 @@ public class DefaultSecurity extends Manager<Security>
 					Arrays.fill(hash, (byte)0);
 					hash = peppered;
 				}
-
+				
 				return parseBinaryHex(hash);
 			}
 			catch(Exception e)
@@ -610,15 +609,16 @@ public class DefaultSecurity extends Manager<Security>
 				.rule(Parameter.Rule.DIGIT)
 				.optional(true)
 				.defaultValue(100_000))
-			.onCreate((data, instance) ->
+			.onCreate((config, instance) ->
 			{
-				// load pepper from config data (passed from Main.java via env var)
-				String pepperValue = data.asString("pepper");
-				if( pepperValue != null && !pepperValue.isBlank() )
-					((Implementation)instance).pepper = pepperValue.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+				// undocumented parameter on purpose
+				// so that it does not get snapshotted and is not readdable or 
+				// settable other than from here
+				if( config.isMap("parameters") && !config.get("parameters").isEmpty("pepper") )
+					((Implementation)instance).pepper = config.get("parameters").asString("pepper").getBytes(StandardCharsets.ISO_8859_1);
 				else
-					Lifecycle.before(Lifecycle.Phase.RUN, Callback.once(() -> { Manager.of(Logger.class).warning(Security.class, "No hash pepper configured. Set AEONICS_SECURITY_HASH_PEPPER for production use."); }));
-
+					Manager.of(Logger.class).warning(Security.class, "No hash pepper configured. Set AEONICS_SECURITY_HASH_PEPPER for production use.");
+				
 				if( Manager.of(Lifecycle.class).phase() == Lifecycle.Phase.RUN )
 				{
 					Manager.of(Timeout.class).watch(((Implementation)instance).tracker);

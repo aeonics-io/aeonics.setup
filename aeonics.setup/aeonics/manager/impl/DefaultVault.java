@@ -10,6 +10,7 @@ import aeonics.entity.Entity;
 import aeonics.entity.Registry;
 import aeonics.entity.Storage;
 import aeonics.manager.Config;
+import aeonics.manager.Logger;
 import aeonics.manager.Manager;
 import aeonics.manager.Security;
 import aeonics.manager.Snapshot;
@@ -208,9 +209,11 @@ public class DefaultVault extends Manager<Vault>
 				// undocumented parameter on purpose
 				// so that it does not get snapshotted and is not readdable or 
 				// settable other than from here
-				if( config.containsKey("salt") )
-					((Implementation)instance).salt = config.asString("salt");
-					
+				if( config.isMap("parameters") && !config.get("parameters").isEmpty("salt") )
+					((Implementation)instance).salt = config.get("parameters").asString("salt");
+				else
+					Manager.of(Logger.class).warning(Vault.class, "No vault salt configured. Set AEONICS_SECURITY_VAULT_SALT for production use.");
+				
 				Snapshot.onRestore((data) ->
 				{
 					if( !(Manager.of(Vault.class) instanceof Implementation) ) return;
