@@ -274,7 +274,7 @@ public class Main extends Plugin
 		{
 			Manager.of(Logger.class).config(Security.class, "Setting default security settings");
 			
-			User.Type user = new User().template().create(Data.map().put("parameters", Data.map().put("login", Manager.of(Config.class).get(Security.class, "defaultadmin")).put("active", true)))
+			User.Type user = new User().template().create(Data.map().put("id", "10000000-1a00000000000000").put("parameters", Data.map().put("login", Manager.of(Config.class).get(Security.class, "defaultadmin")).put("active", true)))
 				.name("Admin User")
 				.addRelation("roles", Role.SUPERADMIN)
 				.addRelation("groups", Group.ADMINISTRATORS)
@@ -303,7 +303,7 @@ public class Main extends Plugin
 				System.out.println("\t-DAEONICS_SECURITY_ADMIN_HASH=" + adminHash + "\n\t-DAEONICS_SECURITY_ADMIN_SALT=" + adminSalt);
 			}
 			
-			Data context = Data.map().put("username", user.id()).put("hash", adminHash).put("salt", adminSalt);
+			Data context = Data.map().put("username", user.login()).put("hash", adminHash).put("salt", adminSalt);
 			adminHash = null; adminSalt = null;
 			
 			if( this.adminMfa != null )
@@ -342,7 +342,21 @@ public class Main extends Plugin
 	
 	private void afterRun()
 	{
-		/* nothing to do */
+		try
+		{
+			Data value = Manager.of(Vault.class).get(".check", "0000000000000000000000000000000000000000000000000000000000000000");
+			
+			if( value == null || value.isEmpty() || !value.isMap() || !value.asBool("success") )
+				Manager.of(Logger.class).warning(Vault.class, "Vault consistency check could not be validated. First run is normal.");
+			else
+				Manager.of(Logger.class).config(Vault.class, "Vault consistency check pass");
+			
+			Manager.of(Vault.class).set(".check", Data.map().put("success", true), "0000000000000000000000000000000000000000000000000000000000000000");
+		}
+		catch(Exception e)
+		{
+			Manager.of(Logger.class).warning(Vault.class, "Vault consistency check error.", e);
+		}
 	}
 	
 	private void beforeShutdown()
