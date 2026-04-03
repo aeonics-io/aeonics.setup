@@ -298,9 +298,12 @@ public class Main extends Plugin
 				// CAUTION : this is on purpose, send it to the console and NOT to the logger
 				System.out.println("****** CAUTION ******");
 				System.out.println("No default admin user hash/salt were provided. A new password was generated:");
-				System.out.println("\t" + password);
-				System.out.println("To reuse this password without snapshot, use these command line arguments:");
-				System.out.println("\t-DAEONICS_SECURITY_ADMIN_HASH=" + adminHash + "\n\t-DAEONICS_SECURITY_ADMIN_SALT=" + adminSalt);
+				System.out.println("\tUsername: " + user.login());
+				System.out.println("\tPassword: " + password);
+				System.out.println("To reuse this password without snapshot, set these environment variables:");
+				System.out.println("\tAEONICS_MANAGER_SECURITY_DEFAULTADMIN=" + user.login());
+				System.out.println("\tAEONICS_SECURITY_ADMIN_HASH=" + adminHash);
+				System.out.println("\tAEONICS_SECURITY_ADMIN_SALT=" + adminSalt);
 			}
 			
 			Data context = Data.map().put("username", user.login()).put("hash", adminHash).put("salt", adminSalt);
