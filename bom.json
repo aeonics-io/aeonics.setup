@@ -1,0 +1,46 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-01-01T00:00:00Z",
+    "component": {
+      "type": "library",
+      "bom-ref": "aeonics-setup",
+      "name": "aeonics-setup",
+      "version": "1.0.0",
+      "description": "Aeonics Default System",
+      "supplier": {
+        "name": "Aeonics SRL",
+        "url": [ "https://aeonics.io" ]
+      },
+      "licenses": [
+        {
+          "license": {
+            "name": "Aeonics Commercial Software License (ACSL)"
+          }
+        }
+      ]
+    },
+    "manufacturer": {
+      "name": "Aeonics SRL",
+      "url": [ "https://aeonics.io" ]
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "aeonics-core",
+      "name": "aeonics-core",
+      "version": "1.0.0",
+      "description": "Aeonics Core System",
+      "scope": "required"
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "aeonics-setup",
+      "dependsOn": [ "aeonics-core" ]
+    }
+  ]
+}

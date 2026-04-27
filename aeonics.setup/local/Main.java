@@ -62,8 +62,8 @@ public class Main extends Plugin
 		else System.clearProperty("AEONICS_SECURITY_ADMIN_MFA");
 	}
 	
-	public String summary() { return "Default System"; }
-	public String description() { return "Initializes the default managers, security settings, sets the default factory for built-in types and loads the initial snapshot if necessary."; }
+	public String summary() { return "Default v1.0.0"; }
+	public String description() { return "Aeonics Default System"; }
 	
 	private <T extends Manager.Type> void manager(Class<T> type, Class<? extends Manager<T>> item, boolean strict, Data parameters)
 	{
@@ -360,6 +360,11 @@ public class Main extends Plugin
 		{
 			Manager.of(Logger.class).warning(Vault.class, "Vault consistency check error.", e);
 		}
+		
+		// force a default snapshot
+		Manager.of(Scheduler.class).in((t) -> {
+			Manager.of(Snapshot.class).create("auto");
+		}, 10_000);
 	}
 	
 	private void beforeShutdown()
