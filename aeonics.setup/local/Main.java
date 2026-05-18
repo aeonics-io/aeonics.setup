@@ -361,10 +361,13 @@ public class Main extends Plugin
 			Manager.of(Logger.class).warning(Vault.class, "Vault consistency check error.", e);
 		}
 		
-		// force a default snapshot
-		Manager.of(Scheduler.class).in((t) -> {
-			Manager.of(Snapshot.class).create("auto");
-		}, 10_000);
+		// force a default snapshot if there are none yet
+		if( Manager.of(Snapshot.class).latest() == null )
+		{
+			Manager.of(Scheduler.class).in((t) -> {
+				Manager.of(Snapshot.class).create("auto");
+			}, 10_000);
+		}
 	}
 	
 	private void beforeShutdown()
