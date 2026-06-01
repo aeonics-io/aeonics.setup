@@ -491,7 +491,12 @@ public class Main extends Plugin
 							}
 						}
 					}
-					catch(Exception e) { Manager.of(Logger.class).config(Snapshot.class, e); return; }
+					catch(Exception e)
+					{
+						Manager.of(Logger.class).config(Snapshot.class, "Failed to restore entity {}:{}", entity.get("type"), entity.get("id"));
+						Manager.of(Logger.class).fine(Snapshot.class, e); 
+						return;
+					}
 				});
 			});
 		}

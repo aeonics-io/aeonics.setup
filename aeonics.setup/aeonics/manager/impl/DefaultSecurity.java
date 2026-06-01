@@ -604,7 +604,7 @@ public class DefaultSecurity extends Manager<Security>
 				.description("The name or id of the storage for access tokens. If the storage does not exist, a local temporary (ouf-of-storage) location is used instead.")
 				.format(Parameter.Format.TEXT)
 				.optional(true)
-				.defaultValue(Data.empty()))
+				.defaultValue(() -> Data.empty()))
 			.config(Security.class, new Parameter("hash.rounds")
 				.summary("Hash iteration count")
 				.description("The number of PBKDF2 iterations for password hashing. Higher values increase brute-force resistance but consume more CPU. Minimum: 10000 for constrained devices, recommended: 600000 for dedicated servers.")
