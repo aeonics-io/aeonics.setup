@@ -155,6 +155,9 @@ public class DefaultNetwork extends Manager<Network>
 			
 			do
 			{
+				try { Hardware.RAM.waitForSpace(1024*64, 1000); }
+				catch(IllegalStateException timeout) { break; /* do not accept, it will fire again later */ }
+				
 				SocketChannel client = channel.accept();
 				if( client == null ) break;
 				connectionsEstablished.increment();
