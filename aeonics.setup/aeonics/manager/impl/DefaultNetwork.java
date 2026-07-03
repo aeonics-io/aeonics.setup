@@ -82,10 +82,13 @@ public class DefaultNetwork extends Manager<Network>
 				
 				ConnectionImplementation c = new ConnectionImplementation(channel, true);
 				
-				channel.register(selector, SelectionKey.OP_CONNECT, c);
-				selector.wakeup();
 				if( channel.connect(new InetSocketAddress(remoteAddress, remotePort)) )
 					onConnectable2(c);
+				else
+				{
+					channel.register(selector, SelectionKey.OP_CONNECT, c);
+					selector.wakeup();
+				}
 				return (options == null ? c : securize(c, options));
 			}
 			catch(IOException e)
@@ -693,13 +696,17 @@ public class DefaultNetwork extends Manager<Network>
 		private final ConcurrentLinkedQueue<ByteBuffer> writeBuffer = new ConcurrentLinkedQueue<>();
 		private void processBufferedWrites()
 		{
-			ByteBuffer out;
-			while( handshakeComplete.get() )
+			writing.lock();
+			try
 			{
-				out = writeBuffer.poll();
-				if( out == null ) return;
-				write(out);
-			}
+				ByteBuffer out;
+				while( handshakeComplete.get() )
+				{
+					out = writeBuffer.poll();
+					if( out == null ) return;
+					write(out);
+				}
+			} finally { writing.unlock(); }
 		}
 
 		public void close() throws IOException { source.close(); }
